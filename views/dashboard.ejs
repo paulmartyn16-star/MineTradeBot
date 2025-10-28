@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MineTrade Dashboard</title>
+  <style>
+    body {
+      background-color: #0a0a0a;
+      color: #ffd700;
+      font-family: 'Segoe UI', sans-serif;
+      text-align: center;
+      margin-top: 40px;
+    }
+    input, textarea, select {
+      width: 80%;
+      margin: 10px;
+      padding: 8px;
+      border: none;
+      border-radius: 5px;
+      background-color: #1a1a1a;
+      color: #ffd700;
+    }
+    input[type="color"] {
+      width: 60px;
+      height: 40px;
+      padding: 0;
+      border: none;
+      cursor: pointer;
+    }
+    button {
+      background-color: #ffd700;
+      color: #000;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:hover { background-color: #e5c100; }
+    .container {
+      max-width: 800px;
+      margin: auto;
+      background-color: #111;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 0 20px #222;
+    }
+    #preview {
+      background-color: #111;
+      color: #fff;
+      padding: 15px;
+      border-radius: 10px;
+      margin-top: 20px;
+      text-align: left;
+    }
+    .embed-box {
+      background-color: #2f3136;
+      border-left: 5px solid #ffd700;
+      border-radius: 8px;
+      padding: 15px;
+      margin-top: 10px;
+    }
+    .embed-title {
+      font-weight: bold;
+      color: #ffffff;
+      margin-bottom: 5px;
+    }
+    .embed-desc {
+      color: #dcdcdc;
+      margin-bottom: 10px;
+    }
+    .embed-footer {
+      font-size: 12px;
+      color: #999;
+      border-top: 1px solid #3a3a3a;
+      padding-top: 5px;
+    }
+    .success {
+      background-color: #16a34a;
+      color: white;
+      padding: 8px;
+      border-radius: 5px;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>💎 MineTrade Embed Builder</h1>
+
+    <% if (message) { %>
+      <div class="success"><%= message %></div>
+    <% } %>
+
+    <form action="/send" method="POST">
+      <select name="channelId" required>
+        <option value="">Select Channel</option>
+        <% channels.forEach(ch => { %>
+          <option value="<%= ch.id %>">#<%= ch.name %></option>
+        <% }) %>
+      </select><br>
+
+      <input type="text" name="title" id="title" placeholder="Embed Title" /><br>
+      <textarea name="description" id="description" rows="5" placeholder="Embed Description"></textarea><br>
+
+      <label for="color">🎨 Pick a color:</label><br>
+      <input type="color" name="color" id="color" value="#FFD700"><br>
+
+      <!-- 🔔 RESTOCK ROLE CHECKBOX -->
+      <label>
+        <input type="checkbox" name="restock"> 🔔 Ping Restock Role
+      </label><br><br>
+
+      <input type="text" name="footer" id="footer" placeholder="Footer Text" /><br>
+      <button type="submit">Send Embed</button>
+    </form>
+
+    <div id="preview">
+      <h3>📋 Embed Preview</h3>
+      <div id="embed-preview" class="embed-box">
+        <div class="embed-title">Title Preview</div>
+        <div class="embed-desc">This is how your embed will look in Discord.</div>
+        <div class="embed-footer">MineTrade | Embed System</div>
+      </div>
+    </div>
+
+    <br><a href="/logout" style="color:#888;">Logout</a>
+  </div>
+
+  <script>
+    const title = document.getElementById('title');
+    const desc = document.getElementById('description');
+    const footer = document.getElementById('footer');
+    const color = document.getElementById('color');
+    const preview = document.getElementById('embed-preview');
+
+    function updatePreview() {
+      preview.style.borderLeft = `5px solid ${color.value}`;
+      preview.querySelector('.embed-title').textContent = title.value || 'Embed Title';
+      preview.querySelector('.embed-desc').textContent = desc.value || 'This is how your embed will look in Discord.';
+      preview.querySelector('.embed-footer').textContent = footer.value || 'MineTrade | Embed System';
+    }
+
+    [title, desc, footer, color].forEach(el => el.addEventListener('input', updatePreview));
+  </script>
+</body>
+</html>
