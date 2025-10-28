@@ -335,6 +335,6 @@ client.on("guildMemberAdd", async (member) => {
   }
 });
 
-client.login(TOKEN);// Test Auto Push
+client.login(TOKEN);
 
 
