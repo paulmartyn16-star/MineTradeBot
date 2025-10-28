@@ -30,25 +30,24 @@ module.exports = {
     }
 
     try {
-      console.log("Fetching username for:", focused);
+      // Search for players starting with the input focused on
       const res = await fetch(
         `https://api.mojang.com/profiles/minecraft?names=${encodeURIComponent(focused)}`
       );
       const data = await res.json();
 
       if (data && data.length > 0) {
+        // Return possible names based on the search
         const names = data.map((player) => ({
           name: player.name,
           value: player.name,
         }));
-        console.log("Autocomplete results:", names);
         return interaction.respond(names);
       } else {
-        console.log("No results found for:", focused);
         return interaction.respond([]);
       }
     } catch (err) {
-      console.error("Autocomplete fetch error:", err);
+      console.error("Autocomplete error:", err);
       return interaction.respond([]);
     }
   },
