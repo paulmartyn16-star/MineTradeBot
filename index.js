@@ -63,7 +63,7 @@ passport.use(
     {
       clientID: CLIENT_ID,
       clientSecret: CLIENT_SECRET,
-callbackURL: "https://civic-hull-rio-warming.trycloudflare.com",
+callbackURL: "https://minetradebot.onrender.com/callback",
       scope: ["identify", "guilds", "guilds.members.read"],
     },
     (accessToken, refreshToken, profile, done) => done(null, profile)
