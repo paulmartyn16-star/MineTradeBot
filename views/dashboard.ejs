@@ -22,13 +22,15 @@
       color: #ffd700;
       display: flex;
       flex-direction: column;
-      align-items: center;
+      align-items: flex-start;
       padding-top: 40px;
       box-shadow: 2px 0 8px rgba(0, 0, 0, 0.5);
     }
 
     .sidebar h2 {
       font-size: 20px;
+      text-align: center;
+      width: 100%;
       margin-bottom: 30px;
     }
 
@@ -50,6 +52,34 @@
     .sidebar button.active {
       color: #fff;
       background-color: #222;
+    }
+
+    .sidebar .channel-list {
+      margin-left: 40px;
+      margin-top: -5px;
+      margin-bottom: 10px;
+    }
+
+    .sidebar .channel-item {
+      color: #aaa;
+      font-size: 13px;
+      margin: 2px 0;
+      cursor: default;
+    }
+
+    .sidebar .channel-item::before {
+      content: "# ";
+      color: #666;
+    }
+
+    .logout {
+      color: #888;
+      text-decoration: none;
+      display: block;
+      text-align: center;
+      margin-top: auto;
+      width: 100%;
+      padding: 15px 0;
     }
 
     /* Main content */
@@ -124,14 +154,6 @@
 
     #reaction-pairs { margin-top: 10px; }
 
-    a.logout {
-      color: #888;
-      text-decoration: none;
-      display: block;
-      text-align: center;
-      margin-top: 20px;
-    }
-
     /* Embed preview */
     #preview {
       background-color: #111;
@@ -170,6 +192,19 @@
     <h2>💎 MineTrade</h2>
     <button id="tab-embed" class="active">📋 Embed Builder</button>
     <button id="tab-reaction">🎭 Reaction Roles</button>
+
+    <!-- Dynamische Channel-Liste -->
+    <div class="channel-list">
+      <% 
+      const channelNames = [];
+      Object.values(rrData).forEach(r => {
+        if (!channelNames.includes(r.channelName)) channelNames.push(r.channelName);
+      });
+      channelNames.forEach(name => { %>
+        <div class="channel-item"><%= name %></div>
+      <% }); %>
+    </div>
+
     <a href="/logout" class="logout">Logout</a>
   </div>
 
