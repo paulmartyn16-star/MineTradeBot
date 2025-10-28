@@ -202,11 +202,8 @@ app.post("/reactionrole", isAuthenticated, async (req, res) => {
         iconURL: FOOTER_ICON,
       });
 
-    let msgContent =
-      "React with the emojis below to get your roles:\n\n" +
-      pairs.map((p) => `${p.emoji} → <@&${p.roleId}>`).join("\n");
-
-    const msg = await channel.send({ content: msgContent, embeds: [embed] });
+    // ✅ Nachricht ohne zusätzlichen Text oberhalb des Embeds
+    const msg = await channel.send({ embeds: [embed] });
 
     for (const pair of pairs) await msg.react(pair.emoji);
 
