@@ -57,8 +57,12 @@ app.use(
     secret: "minetrade_secret_key",
     resave: false,
     saveUninitialized: false,
+    cookie: {
+      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 Tage Session speichern
+    },
   })
 );
+
 
 // === DISCORD OAUTH2 LOGIN ===
 passport.serializeUser((user, done) => done(null, user));

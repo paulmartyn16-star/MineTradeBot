@@ -17,7 +17,7 @@
 
     /* Sidebar */
     .sidebar {
-      width: 220px;
+      width: 240px;
       background-color: #111;
       color: #ffd700;
       display: flex;
@@ -55,21 +55,26 @@
     }
 
     .sidebar .channel-list {
-      margin-left: 40px;
+      width: 100%;
       margin-top: -5px;
-      margin-bottom: 10px;
+      margin-bottom: 15px;
     }
 
-    .sidebar .channel-item {
+    .sidebar .channel-btn {
+      background: none;
+      border: none;
       color: #aaa;
       font-size: 13px;
-      margin: 2px 0;
-      cursor: default;
+      text-align: left;
+      width: 100%;
+      padding: 6px 0 6px 45px;
+      cursor: pointer;
     }
 
-    .sidebar .channel-item::before {
-      content: "# ";
-      color: #666;
+    .sidebar .channel-btn:hover,
+    .sidebar .channel-btn.active {
+      background-color: #1a1a1a;
+      color: #ffd700;
     }
 
     .logout {
@@ -154,28 +159,6 @@
 
     #reaction-pairs { margin-top: 10px; }
 
-    /* Embed preview */
-    #preview {
-      background-color: #111;
-      color: #fff;
-      padding: 15px;
-      border-radius: 10px;
-      margin-top: 20px;
-      text-align: left;
-    }
-
-    .embed-box {
-      background-color: #2f3136;
-      border-left: 5px solid #ffd700;
-      border-radius: 8px;
-      padding: 15px;
-      margin-top: 10px;
-    }
-
-    .embed-title { font-weight: bold; color: #ffffff; margin-bottom: 5px; }
-    .embed-desc { color: #dcdcdc; margin-bottom: 10px; }
-    .embed-footer { font-size: 12px; color: #999; border-top: 1px solid #3a3a3a; padding-top: 5px; }
-
     /* Reaction Role List */
     .reaction-list { margin-top: 20px; background:#1a1a1a; border-radius:10px; padding:15px; }
     .reaction-item { border-bottom:1px solid #333; padding:10px 0; }
@@ -193,7 +176,7 @@
     <button id="tab-embed" class="active">📋 Embed Builder</button>
     <button id="tab-reaction">🎭 Reaction Roles</button>
 
-    <!-- Dynamische Channel-Liste -->
+    <!-- Dynamische Channel-Liste (anklickbar) -->
     <div class="channel-list">
       <% 
       const channelNames = [];
@@ -201,7 +184,7 @@
         if (!channelNames.includes(r.channelName)) channelNames.push(r.channelName);
       });
       channelNames.forEach(name => { %>
-        <div class="channel-item"><%= name %></div>
+        <button class="channel-btn" data-channel="<%= name %>"># <%= name %></button>
       <% }); %>
     </div>
 
@@ -211,7 +194,7 @@
   <!-- Main content -->
   <div class="content">
 
-    <!-- Embed Builder Tab -->
+    <!-- Embed Builder -->
     <div id="embed-tab" class="container tab active">
       <h1>📋 Embed Builder</h1>
       <% if (message) { %>
@@ -238,22 +221,11 @@
         <input type="text" name="footer" id="footer" placeholder="Footer Text" /><br>
         <button type="submit">Send Embed</button>
       </form>
-
-      <div id="preview">
-        <h3>📋 Embed Preview</h3>
-        <div id="embed-preview" class="embed-box">
-          <div class="embed-title">Title Preview</div>
-          <div class="embed-desc">This is how your embed will look in Discord.</div>
-          <div class="embed-footer">MineTrade | Embed System</div>
-        </div>
-      </div>
     </div>
 
-    <!-- Reaction Roles Tab -->
+    <!-- Reaction Role Creator -->
     <div id="reaction-tab" class="container tab" style="display:none;">
       <h1>🎭 Reaction Roles</h1>
-
-      <!-- Create new Reaction Role -->
       <form action="/reactionrole" method="POST">
         <select name="channelId" required>
           <option value="">Select Channel</option>
@@ -273,18 +245,19 @@
         <button type="button" id="add-pair">+ Add Pair</button><br><br>
         <button type="submit">Send Reaction Role Message</button>
       </form>
+    </div>
 
-      <!-- Active Reaction Roles -->
-      <h3 style="margin-top:30px;">Active Reaction Role Messages</h3>
-      <div class="reaction-list">
-        <% 
-        const grouped = {};
-        Object.entries(rrData).forEach(([msgId, data]) => {
-          if (!grouped[data.channelName]) grouped[data.channelName] = [];
-          grouped[data.channelName].push({ id: msgId, ...data });
-        });
-        Object.entries(grouped).forEach(([channel, embeds]) => { %>
-          <div class="channel-name">💬 #<%= channel %></div>
+    <!-- Channel-specific Reaction Role Editors -->
+    <% 
+    const grouped = {};
+    Object.entries(rrData).forEach(([msgId, data]) => {
+      if (!grouped[data.channelName]) grouped[data.channelName] = [];
+      grouped[data.channelName].push({ id: msgId, ...data });
+    });
+    Object.entries(grouped).forEach(([channel, embeds]) => { %>
+      <div id="tab-<%= channel %>" class="container tab" style="display:none;">
+        <h1>💬 #<%= channel %></h1>
+        <div class="reaction-list">
           <% embeds.forEach(e => { %>
             <div class="reaction-item">
               <form class="edit-form" action="/reactionrole/update" method="POST">
@@ -313,7 +286,6 @@
                     <button type="button" onclick="this.parentElement.remove()">❌</button>
                   </div>
                 <% }) %>
-
                 <button type="submit">💾 Update</button>
               </form>
               <form action="/reactionrole/delete" method="POST">
@@ -322,45 +294,47 @@
               </form>
             </div>
           <% }) %>
-        <% }) %>
+        </div>
       </div>
-    </div>
+    <% }) %>
   </div>
 
   <script>
-    // === Sidebar Tab Switcher ===
+    // === Tab Switching ===
     const embedTabBtn = document.getElementById('tab-embed');
     const reactionTabBtn = document.getElementById('tab-reaction');
-    const embedTab = document.getElementById('embed-tab');
-    const reactionTab = document.getElementById('reaction-tab');
+    const tabs = document.querySelectorAll('.tab');
+    const channelButtons = document.querySelectorAll('.channel-btn');
+
+    function showTab(id) {
+      tabs.forEach(tab => tab.style.display = 'none');
+      document.getElementById(id).style.display = '';
+    }
 
     embedTabBtn.addEventListener('click', () => {
-      embedTab.style.display = '';
-      reactionTab.style.display = 'none';
+      showTab('embed-tab');
       embedTabBtn.classList.add('active');
       reactionTabBtn.classList.remove('active');
+      channelButtons.forEach(btn => btn.classList.remove('active'));
     });
 
     reactionTabBtn.addEventListener('click', () => {
-      reactionTab.style.display = '';
-      embedTab.style.display = 'none';
+      showTab('reaction-tab');
       reactionTabBtn.classList.add('active');
       embedTabBtn.classList.remove('active');
+      channelButtons.forEach(btn => btn.classList.remove('active'));
     });
 
-    // === Embed Preview ===
-    const title = document.getElementById('title');
-    const desc = document.getElementById('description');
-    const footer = document.getElementById('footer');
-    const color = document.getElementById('color');
-    const preview = document.getElementById('embed-preview');
-    function updatePreview() {
-      preview.style.borderLeft = `5px solid ${color.value}`;
-      preview.querySelector('.embed-title').textContent = title.value || 'Embed Title';
-      preview.querySelector('.embed-desc').textContent = desc.value || 'This is how your embed will look in Discord.';
-      preview.querySelector('.embed-footer').textContent = footer.value || 'MineTrade | Embed System';
-    }
-    [title, desc, footer, color].forEach(el => el.addEventListener('input', updatePreview));
+    channelButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const channel = btn.dataset.channel;
+        showTab(`tab-${channel}`);
+        channelButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        embedTabBtn.classList.remove('active');
+        reactionTabBtn.classList.remove('active');
+      });
+    });
 
     // === Reaction Role Pair Adder ===
     const pairsDiv = document.getElementById('reaction-pairs');
