@@ -1,5 +1,5 @@
 // ==========================================================
-// /commands/list.js – full working version (Shiiyu API)
+// /commands/list.js — Stable Version (Ashcon + Shiiyu API)
 // ==========================================================
 const {
   SlashCommandBuilder,
@@ -14,54 +14,55 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("list")
     .setDescription("List a Hypixel SkyBlock account for sale.")
-    .addStringOption((opt) =>
-      opt
-        .setName("account")
+    .addStringOption(opt =>
+      opt.setName("account")
         .setDescription("Minecraft username of the account")
-        .setRequired(true)
-    )
-    .addIntegerOption((opt) =>
-      opt
-        .setName("price")
+        .setRequired(true))
+    .addIntegerOption(opt =>
+      opt.setName("price")
         .setDescription("Price in USD")
-        .setRequired(true)
-    )
-    .addUserOption((opt) =>
-      opt
-        .setName("listedby")
+        .setRequired(true))
+    .addUserOption(opt =>
+      opt.setName("listedby")
         .setDescription("Who is listing the account?")
-        .setRequired(true)
-    ),
+        .setRequired(true)),
 
   async execute(interaction) {
     const mcName = interaction.options.getString("account");
     const price = interaction.options.getInteger("price");
     const listedBy = interaction.options.getUser("listedby");
 
-    await interaction.deferReply();
+    // acknowledge immediately
+    await interaction.deferReply({ ephemeral: false });
 
     try {
-      // === Fetch player data from Shiiyu API ===
-      const res = await fetch(`https://sky.shiiyu.moe/api/v2/player/${mcName}`);
+      // --- Step 1: Get UUID from Ashcon ---
+      const ashconRes = await fetch(`https://api.ashcon.app/mojang/v2/user/${mcName}`);
+      if (!ashconRes.ok) {
+        return await interaction.editReply("❌ Could not fetch Minecraft UUID. Make sure the username is valid!");
+      }
+
+      const ashconData = await ashconRes.json();
+      const uuid = ashconData.uuid;
+      if (!uuid) return await interaction.editReply("❌ Player not found on Mojang.");
+
+      // --- Step 2: Get SkyBlock Data from Shiiyu API ---
+      const res = await fetch(`https://sky.shiiyu.moe/api/v2/profile/${uuid}`);
       if (!res.ok) {
         console.log("Shiiyu API Error:", res.status, res.statusText);
-        return interaction.editReply(
-          "❌ Failed to fetch player data. The Shiiyu API might be rate-limited or offline."
-        );
+        return await interaction.editReply("⚠️ No SkyBlock data found. Maybe API Access is disabled on that account.");
       }
 
       const data = await res.json();
       if (!data || !data.profiles || Object.keys(data.profiles).length === 0) {
-        return interaction.editReply("⚠️ No SkyBlock profiles found for this player.");
+        return await interaction.editReply("⚠️ No SkyBlock profiles found for this player.");
       }
 
-      // === Get the most recent profile ===
+      // --- Step 3: Pick most recent profile ---
       const profile = Object.values(data.profiles)[0].data;
       const stats = profile?.stats || {};
       const slayers = profile?.slayer?.xp || {};
       const networth = profile?.networth?.networth?.toLocaleString() || "Unknown";
-
-      // === Format some values ===
       const skillAvg = stats?.average_level?.toFixed(2) || "N/A";
       const catacombs = stats?.catacombs?.level?.toFixed(2) || "N/A";
       const level = profile?.skyblock_level?.level || "N/A";
@@ -69,7 +70,7 @@ module.exports = {
         .map(([boss, xp]) => `${boss}: ${Math.round(xp / 1000)}k XP`)
         .join("\n") || "N/A";
 
-      // === Build the embed ===
+      // --- Step 4: Build Embed ---
       const embed = new EmbedBuilder()
         .setColor("#FFD700")
         .setTitle("💎 Account Information")
@@ -89,7 +90,6 @@ module.exports = {
           iconURL: process.env.FOOTER_ICON,
         });
 
-      // === Buttons ===
       const buttons = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("buy_account")
@@ -107,10 +107,15 @@ module.exports = {
 
       await interaction.editReply({ embeds: [embed], components: [buttons] });
     } catch (err) {
-      console.error("❌ Error fetching Shiiyu API:", err);
-      await interaction.editReply(
-        "❌ Error while fetching SkyBlock data. Please try again later."
-      );
+      console.error("❌ Error in /list command:", err);
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({
+          content: "❌ Error executing command.",
+          ephemeral: true,
+        }).catch(() => {});
+      } else {
+        await interaction.editReply("❌ Error executing command.");
+      }
     }
   },
 };
