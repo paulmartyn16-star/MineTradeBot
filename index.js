@@ -5,6 +5,7 @@ const passport = require("passport");
 const Strategy = require("passport-discord").Strategy;
 const bodyParser = require("body-parser");
 const path = require("path");
+const fs = require("fs");
 const {
   Client,
   GatewayIntentBits,
@@ -22,8 +23,9 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMessageReactions,
   ],
-  partials: [Partials.Channel],
+  partials: [Partials.Channel, Partials.Message, Partials.Reaction],
 });
 
 // === ENV VARIABLES ===
@@ -38,7 +40,7 @@ const RESTOCK_ROLE_ID = process.env.RESTOCK_ROLE_ID;
 // === DASHBOARD CONFIG ===
 const DASHBOARD_PORT = 3000;
 const SERVER_NAME = "MineTrade";
-const OWNER_ROLE_NAME = "👑 Owner"; // 🔑 Rollenname für Zugriff
+const OWNER_ROLE_NAME = "👑 Owner";
 
 // === EXPRESS DASHBOARD SETUP ===
 const app = express();
@@ -63,7 +65,7 @@ passport.use(
     {
       clientID: CLIENT_ID,
       clientSecret: CLIENT_SECRET,
-callbackURL: "https://minetradebot.onrender.com/callback",
+      callbackURL: "https://minetradebot.onrender.com/callback",
       scope: ["identify", "guilds", "guilds.members.read"],
     },
     (accessToken, refreshToken, profile, done) => done(null, profile)
@@ -110,12 +112,14 @@ app.get(
 );
 app.get("/logout", (req, res) => req.logout(() => res.redirect("/")));
 
+// === DASHBOARD ===
 app.get("/dashboard", isAuthenticated, async (req, res) => {
   const guild = client.guilds.cache.find((g) => g.name === SERVER_NAME);
   if (!guild)
     return res.send("❌ Server not found. Is the bot in your server?");
   const channels = guild.channels.cache.filter((ch) => ch.type === 0);
-  res.render("dashboard", { user: req.user, channels, message: null });
+  const roles = guild.roles.cache.filter((r) => r.name !== "@everyone");
+  res.render("dashboard", { user: req.user, channels, roles, message: null });
 });
 
 // === SEND EMBED (mit RESTOCK Feature) ===
@@ -137,7 +141,6 @@ app.post("/send", isAuthenticated, async (req, res) => {
         iconURL: FOOTER_ICON,
       });
 
-    // 🔔 RESTOCK FEATURE
     if (restock === "on" && RESTOCK_ROLE_ID) {
       await channel.send({
         content: `<@&${RESTOCK_ROLE_ID}> 🔔 **Restock Alert!**`,
@@ -148,9 +151,11 @@ app.post("/send", isAuthenticated, async (req, res) => {
 
     const guild = client.guilds.cache.find((g) => g.name === SERVER_NAME);
     const channels = guild.channels.cache.filter((ch) => ch.type === 0);
+    const roles = guild.roles.cache.filter((r) => r.name !== "@everyone");
     res.render("dashboard", {
       user: req.user,
       channels,
+      roles,
       message: "✅ Embed sent successfully!",
     });
   } catch (err) {
@@ -159,17 +164,113 @@ app.post("/send", isAuthenticated, async (req, res) => {
   }
 });
 
-// === START DASHBOARD ===
+// ======================================================================
+// === 🧩 REACTION ROLE SYSTEM ==========================================
+// ======================================================================
+
+const reactionRoleFile = path.join(__dirname, "reactionroles.json");
+let reactionRoles = fs.existsSync(reactionRoleFile)
+  ? JSON.parse(fs.readFileSync(reactionRoleFile, "utf8"))
+  : {};
+
+app.post("/reactionrole", isAuthenticated, async (req, res) => {
+  const { channelId, title, description, color, footer } = req.body;
+  let pairs = [];
+
+  for (let key in req.body) {
+    if (key.startsWith("emoji_")) {
+      const index = key.split("_")[1];
+      const emoji = req.body[`emoji_${index}`];
+      const roleId = req.body[`role_${index}`];
+      if (emoji && roleId) pairs.push({ emoji, roleId });
+    }
+  }
+
+  if (pairs.length === 0)
+    return res.send("❌ Please add at least one emoji–role pair.");
+
+  try {
+    const channel = await client.channels.fetch(channelId);
+    if (!channel) return res.send("❌ Channel not found");
+
+    const embed = new EmbedBuilder()
+      .setTitle(title || "Reaction Roles")
+      .setDescription(description || "React below to get your roles!")
+      .setColor(color ? parseInt(color.replace("#", ""), 16) : 0xFFD700)
+      .setFooter({
+        text: footer || "MineTrade | Reaction Roles",
+        iconURL: FOOTER_ICON,
+      });
+
+    let msgContent =
+      "React with the emojis below to get your roles:\n\n" +
+      pairs.map((p) => `${p.emoji} → <@&${p.roleId}>`).join("\n");
+
+    const msg = await channel.send({ content: msgContent, embeds: [embed] });
+
+    for (const pair of pairs) await msg.react(pair.emoji);
+
+    reactionRoles[msg.id] = pairs;
+    fs.writeFileSync(reactionRoleFile, JSON.stringify(reactionRoles, null, 2));
+
+    const guild = client.guilds.cache.find((g) => g.name === SERVER_NAME);
+    const channels = guild.channels.cache.filter((ch) => ch.type === 0);
+    const roles = guild.roles.cache.filter((r) => r.name !== "@everyone");
+
+    res.render("dashboard", {
+      user: req.user,
+      channels,
+      roles,
+      message: "✅ Reaction Role message sent successfully!",
+    });
+  } catch (err) {
+    console.error("❌ Error sending reaction role message:", err);
+    res.status(500).send("❌ Error sending reaction role message");
+  }
+});
+
+// === Handle Reaction Add / Remove ===
+client.on("messageReactionAdd", async (reaction, user) => {
+  if (user.bot) return;
+  const data = reactionRoles[reaction.message.id];
+  if (!data) return;
+
+  const pair = data.find((p) => p.emoji === reaction.emoji.name);
+  if (!pair) return;
+
+  const guild = reaction.message.guild;
+  const member = await guild.members.fetch(user.id);
+  const role = guild.roles.cache.get(pair.roleId);
+  if (role) await member.roles.add(role).catch(console.error);
+});
+
+client.on("messageReactionRemove", async (reaction, user) => {
+  if (user.bot) return;
+  const data = reactionRoles[reaction.message.id];
+  if (!data) return;
+
+  const pair = data.find((p) => p.emoji === reaction.emoji.name);
+  if (!pair) return;
+
+  const guild = reaction.message.guild;
+  const member = await guild.members.fetch(user.id);
+  const role = guild.roles.cache.get(pair.roleId);
+  if (role) await member.roles.remove(role).catch(console.error);
+});
+
+// ======================================================================
+// === BOT CORE + EXISTING SYSTEMS (Ticket, Verify, Welcome) ============
+// ======================================================================
+
 app.listen(DASHBOARD_PORT, () =>
   console.log(`🌐 Dashboard running on http://localhost:${DASHBOARD_PORT}`)
 );
 
-// === DISCORD BOT CORE ===
 client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// ===================== 🎟️ SUPPORT TICKET SYSTEM =====================
+// === Support Ticket System ===
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
   if (interaction.customId !== "create_support_ticket") return;
@@ -222,7 +323,7 @@ client.on("interactionCreate", async (interaction) => {
   });
 });
 
-// === Close Ticket Confirmation ===
+// === Close Ticket ===
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
 
@@ -265,7 +366,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// ===================== ✅ VERIFY BUTTON HANDLER =====================
+// === Verify Button ===
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
   if (interaction.customId !== "verify_user") return;
@@ -296,7 +397,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// ===================== 👋 WELCOME MESSAGE =====================
+// === Welcome Message ===
 client.on("guildMemberAdd", async (member) => {
   try {
     const channel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
@@ -336,5 +437,3 @@ client.on("guildMemberAdd", async (member) => {
 });
 
 client.login(TOKEN);
-
-
