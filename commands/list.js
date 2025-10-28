@@ -1,74 +1,56 @@
-// commands/list.js
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
-const fetch = require("node-fetch");
+try {
+  // === Hole UUID vom Minecraft-Namen über Mojang-API ===
+  const mojangResponse = await fetch(`https://api.mojang.com/users/profiles/minecraft/${mcName}`);
+  if (!mojangResponse.ok) {
+    return interaction.editReply("❌ Minecraft account not found!");
+  }
 
-module.exports = {
-  data: new SlashCommandBuilder()
-    .setName("list")
-    .setDescription("List a Hypixel SkyBlock account for sale.")
-    .addStringOption(opt =>
-      opt.setName("account")
-        .setDescription("Minecraft username of the account")
-        .setRequired(true))
-    .addIntegerOption(opt =>
-      opt.setName("price")
-        .setDescription("Price in USD")
-        .setRequired(true))
-    .addUserOption(opt =>
-      opt.setName("listedby")
-        .setDescription("Who is listing the account?")
-        .setRequired(true)),
+  const mojangData = await mojangResponse.json();
+  const uuid = mojangData.id; // Mojang gibt ID bereits ohne Bindestriche
 
-  async execute(interaction) {
-    const mcName = interaction.options.getString("account");
-    const price = interaction.options.getInteger("price");
-    const listedBy = interaction.options.getUser("listedby");
-    const apiKey = process.env.HYPIXEL_API_KEY;
+  if (!uuid) {
+    return interaction.editReply("❌ Could not fetch UUID for this Minecraft name.");
+  }
 
-    await interaction.deferReply();
+  // === Hole SkyBlock-Profile von Hypixel ===
+  const apiKey = process.env.HYPIXEL_API_KEY;
+  const skyblockURL = `https://api.hypixel.net/v2/skyblock/profiles?key=${apiKey}&uuid=${uuid}`;
+  const skyRes = await fetch(skyblockURL);
+  const skyData = await skyRes.json();
 
-    try {
-      const mojangRes = await fetch(`https://api.mojang.com/users/profiles/minecraft/${mcName}`);
-      const mojangData = await mojangRes.json();
-      if (!mojangData?.id) return interaction.editReply("❌ Minecraft account not found!");
+  console.log("Skyblock API Response:", JSON.stringify(skyData, null, 2));
 
-      const uuid = mojangData.id;
-      const skyRes = await fetch(`https://api.hypixel.net/v2/skyblock/profiles?key=${apiKey}&uuid=${uuid}`);
-      const skyData = await skyRes.json();
-      if (!skyData.success || !skyData.profiles?.length)
-        return interaction.editReply("⚠️ No SkyBlock profiles found for this player.");
+  if (!skyData.success) {
+    return interaction.editReply(`❌ Hypixel API Error: ${skyData.cause || "Unknown"}`);
+  }
 
-      const profile = skyData.profiles.sort((a, b) => (b.members[uuid]?.last_save || 0) - (a.members[uuid]?.last_save || 0))[0];
-      const member = profile.members[uuid];
+  if (!skyData.profiles || skyData.profiles.length === 0) {
+    return interaction.editReply("⚠️ No SkyBlock profiles found. Make sure your SkyBlock API access is enabled!");
+  }
 
-      const level = Math.round((member.leveling?.experience || 0) / 100);
-      const slayers = member.slayer_bosses
-        ? Object.entries(member.slayer_bosses).map(([t, d]) => `${t}: ${d.xp || 0}`).join("\n")
-        : "N/A";
+  // === Nimm das aktuellste Profil ===
+  const profile = skyData.profiles.sort((a, b) =>
+    (b.members[uuid]?.last_save || 0) - (a.members[uuid]?.last_save || 0)
+  )[0];
 
-      const embed = new EmbedBuilder()
-        .setColor("#FFD700")
-        .setTitle("💎 SkyBlock Account Listing")
-        .setThumbnail(`https://mc-heads.net/avatar/${mcName}`)
-        .addFields(
-          { name: "🎮 Account", value: `\`${mcName}\``, inline: true },
-          { name: "💰 Price", value: `$${price}`, inline: true },
-          { name: "📋 Listed by", value: `<@${listedBy.id}>`, inline: true },
-          { name: "🧠 SkyBlock Level", value: `${level}`, inline: true },
-          { name: "⚔️ Slayers", value: slayers.slice(0, 1024), inline: false }
-        )
-        .setFooter({ text: "MineTrade | Verified Hypixel Data", iconURL: process.env.FOOTER_ICON });
+  const member = profile.members[uuid];
 
-      const buttons = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("buy_account").setLabel("💵 Buy Account").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId("update_stats").setLabel("🔄 Update Stats").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("unlist_account").setLabel("🗑️ Unlist").setStyle(ButtonStyle.Danger)
-      );
+  // === Beispielwerte (zum Testen) ===
+  const level = Math.round((member.leveling?.experience || 0) / 100);
+  const purse = member.coin_purse?.toLocaleString() || "N/A";
 
-      await interaction.editReply({ embeds: [embed], components: [buttons] });
-    } catch (err) {
-      console.error("❌ Error fetching Hypixel data:", err);
-      await interaction.editReply("❌ Error while fetching Hypixel data. Please try again later.");
-    }
-  },
-};
+  const embed = new EmbedBuilder()
+    .setColor("#FFD700")
+    .setTitle(`💎 SkyBlock Stats for ${mcName}`)
+    .setThumbnail(`https://mc-heads.net/avatar/${mcName}`)
+    .addFields(
+      { name: "🧠 Level", value: `${level}`, inline: true },
+      { name: "💰 Purse", value: `${purse} Coins`, inline: true },
+    )
+    .setFooter({ text: "MineTrade | Hypixel API", iconURL: process.env.FOOTER_ICON });
+
+  await interaction.editReply({ embeds: [embed] });
+} catch (err) {
+  console.error("❌ Error fetching Hypixel data:", err);
+  await interaction.editReply("❌ Error fetching Hypixel data. Please try again later.");
+}
