@@ -25,9 +25,12 @@ module.exports = {
   // === AUTOCOMPLETE HANDLER ===
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused();
-    if (!focused || focused.length < 2) return interaction.respond([]);
+    if (!focused || focused.length < 2) {
+      return interaction.respond([]);
+    }
 
     try {
+      console.log("Fetching username for:", focused);
       const res = await fetch(
         `https://api.mojang.com/profiles/minecraft?names=${encodeURIComponent(focused)}`
       );
@@ -38,12 +41,14 @@ module.exports = {
           name: player.name,
           value: player.name,
         }));
+        console.log("Autocomplete results:", names);
         return interaction.respond(names);
       } else {
+        console.log("No results found for:", focused);
         return interaction.respond([]);
       }
     } catch (err) {
-      console.error("Autocomplete Fehler:", err);
+      console.error("Autocomplete fetch error:", err);
       return interaction.respond([]);
     }
   },
@@ -65,6 +70,7 @@ module.exports = {
         `https://api.mojang.com/users/profiles/minecraft/${mcName}`
       );
       if (!uuidRes.ok) {
+        console.log("Error fetching UUID for", mcName);
         return await interaction.editReply(
           "❌ Player not found. Please use autocomplete to select a valid name."
         );
@@ -72,7 +78,7 @@ module.exports = {
       const uuidData = await uuidRes.json();
       const uuid = uuidData.id;
 
-      console.log(`UUID retrieved: ${uuid}`); // Log UUID
+      console.log(`UUID retrieved for ${mcName}: ${uuid}`);
 
       // Step 2: Fetch SkyBlock Data using Hypixel API
       const sbRes = await fetch(
@@ -108,7 +114,7 @@ module.exports = {
         .map(([boss, xp]) => `${boss}: ${(xp / 1000).toFixed(1)}k XP`)
         .join("\n") || "N/A";
 
-      console.log("SkyBlock data retrieved:", skyblockStats); // Log SkyBlock data
+      console.log("SkyBlock data retrieved:", skyblockStats);
 
       // Step 4: Build Embed
       const embed = new EmbedBuilder()
