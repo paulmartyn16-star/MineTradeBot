@@ -1,182 +1,246 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MineTrade Dashboard</title>
-    <style>
-      body {
-        background-color: #0d0d0d;
-        color: #f5f5f5;
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 0;
-      }
-      header {
-        background-color: #111;
-        padding: 15px;
-        text-align: center;
-        font-size: 1.5em;
-        color: #ffd700;
-        border-bottom: 2px solid #ffd700;
-      }
-      main {
-        padding: 20px;
-        max-width: 1000px;
-        margin: 0 auto;
-      }
-      h2 {
-        color: #ffd700;
-        margin-top: 40px;
-        border-bottom: 1px solid #333;
-        padding-bottom: 5px;
-      }
-      form {
-        margin-top: 10px;
-        background-color: #1a1a1a;
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #333;
-      }
-      label {
-        display: block;
-        margin-top: 10px;
-        font-weight: bold;
-      }
-      input, select, textarea {
-        width: 100%;
-        padding: 6px;
-        margin-top: 4px;
-        border-radius: 6px;
-        border: none;
-        background: #222;
-        color: #fff;
-      }
-      button {
-        margin-top: 15px;
-        padding: 10px 20px;
-        background: #ffd700;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-        font-weight: bold;
-      }
-      button:hover { background: #e6c200; }
-      .message {
-        color: #00ff7f;
-        margin-top: 10px;
-      }
-      .reaction-list {
-        margin-top: 10px;
-        padding: 10px;
-        background: #111;
-        border-radius: 8px;
-      }
-      .reaction-item {
-        padding: 8px;
-        border-bottom: 1px solid #333;
-      }
-      .reaction-item:last-child {
-        border-bottom: none;
-      }
-      .channel-name {
-        font-weight: bold;
-        color: #ffd700;
-      }
-    </style>
-  </head>
+<head>
+  <meta charset="UTF-8" />
+  <title>MineTrade Dashboard</title>
+  <style>
+    body {
+      background-color: #0a0a0a;
+      color: #ffd700;
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
 
-  <body>
-    <header>💎 MineTrade Dashboard</header>
-    <main>
-      <h2>🪄 Embed Builder</h2>
+    /* Sidebar */
+    .sidebar {
+      width: 220px;
+      background-color: #111;
+      color: #ffd700;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 40px;
+      box-shadow: 2px 0 8px rgba(0, 0, 0, 0.5);
+    }
+
+    .sidebar h2 {
+      font-size: 20px;
+      margin-bottom: 30px;
+    }
+
+    .sidebar button {
+      background: none;
+      border: none;
+      color: #ffd700;
+      font-size: 16px;
+      margin: 10px 0;
+      cursor: pointer;
+      transition: color 0.2s;
+      width: 100%;
+      padding: 10px;
+      text-align: left;
+      padding-left: 30px;
+    }
+
+    .sidebar button:hover,
+    .sidebar button.active {
+      color: #fff;
+      background-color: #222;
+    }
+
+    /* Main content */
+    .content {
+      flex: 1;
+      padding: 30px;
+      overflow-y: auto;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: auto;
+      background-color: #111;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 0 20px #222;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 25px;
+    }
+
+    input, textarea, select {
+      width: 90%;
+      margin: 10px;
+      padding: 8px;
+      border: none;
+      border-radius: 5px;
+      background-color: #1a1a1a;
+      color: #ffd700;
+    }
+
+    input[type="color"] {
+      width: 60px;
+      height: 40px;
+      padding: 0;
+      border: none;
+      cursor: pointer;
+    }
+
+    button {
+      background-color: #ffd700;
+      color: #000;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    button:hover { background-color: #e5c100; }
+
+    .success {
+      background-color: #16a34a;
+      color: white;
+      padding: 8px;
+      border-radius: 5px;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .pair {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .pair input, .pair select { width: auto; flex: 1; }
+
+    #reaction-pairs { margin-top: 10px; }
+
+    a.logout {
+      color: #888;
+      text-decoration: none;
+      display: block;
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    /* Embed preview */
+    #preview {
+      background-color: #111;
+      color: #fff;
+      padding: 15px;
+      border-radius: 10px;
+      margin-top: 20px;
+      text-align: left;
+    }
+
+    .embed-box {
+      background-color: #2f3136;
+      border-left: 5px solid #ffd700;
+      border-radius: 8px;
+      padding: 15px;
+      margin-top: 10px;
+    }
+
+    .embed-title { font-weight: bold; color: #ffffff; margin-bottom: 5px; }
+    .embed-desc { color: #dcdcdc; margin-bottom: 10px; }
+    .embed-footer { font-size: 12px; color: #999; border-top: 1px solid #3a3a3a; padding-top: 5px; }
+
+    /* Reaction Role List */
+    .reaction-list { margin-top: 20px; background:#1a1a1a; border-radius:10px; padding:15px; }
+    .reaction-item { border-bottom:1px solid #333; padding:10px 0; }
+    .reaction-item:last-child{ border-bottom:none; }
+    .channel-name { color:#ffd700; font-weight:bold; margin-top:15px; }
+    .edit-form input, .edit-form textarea, .edit-form select { width:95%; }
+    .delete-btn { background:#ff4d4d; color:#fff; margin-top:5px; }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <h2>💎 MineTrade</h2>
+    <button id="tab-embed" class="active">📋 Embed Builder</button>
+    <button id="tab-reaction">🎭 Reaction Roles</button>
+    <a href="/logout" class="logout">Logout</a>
+  </div>
+
+  <!-- Main content -->
+  <div class="content">
+
+    <!-- Embed Builder Tab -->
+    <div id="embed-tab" class="container tab active">
+      <h1>📋 Embed Builder</h1>
+      <% if (message) { %>
+        <div class="success"><%= message %></div>
+      <% } %>
       <form action="/send" method="POST">
-        <label>Channel</label>
         <select name="channelId" required>
+          <option value="">Select Channel</option>
           <% channels.forEach(ch => { %>
             <option value="<%= ch.id %>">#<%= ch.name %></option>
           <% }) %>
-        </select>
+        </select><br>
 
-        <label>Title</label>
-        <input type="text" name="title" placeholder="Embed Title" />
+        <input type="text" name="title" id="title" placeholder="Embed Title" /><br>
+        <textarea name="description" id="description" rows="5" placeholder="Embed Description"></textarea><br>
 
-        <label>Description</label>
-        <textarea name="description" rows="3" placeholder="Embed description..."></textarea>
-
-        <label>Color (hex)</label>
-        <input type="text" name="color" placeholder="#FFD700" />
-
-        <label>Footer</label>
-        <input type="text" name="footer" placeholder="Footer text..." />
+        <label for="color">🎨 Pick a color:</label><br>
+        <input type="color" name="color" id="color" value="#FFD700"><br>
 
         <label>
-          <input type="checkbox" name="restock" />
-          🔔 Ping Restock Role
-        </label>
+          <input type="checkbox" name="restock"> 🔔 Ping Restock Role
+        </label><br><br>
 
-        <button type="submit">📤 Send Embed</button>
+        <input type="text" name="footer" id="footer" placeholder="Footer Text" /><br>
+        <button type="submit">Send Embed</button>
       </form>
 
-      <% if (message) { %>
-        <p class="message"><%= message %></p>
-      <% } %>
+      <div id="preview">
+        <h3>📋 Embed Preview</h3>
+        <div id="embed-preview" class="embed-box">
+          <div class="embed-title">Title Preview</div>
+          <div class="embed-desc">This is how your embed will look in Discord.</div>
+          <div class="embed-footer">MineTrade | Embed System</div>
+        </div>
+      </div>
+    </div>
 
-      <h2>🎭 Reaction Roles</h2>
+    <!-- Reaction Roles Tab -->
+    <div id="reaction-tab" class="container tab" style="display:none;">
+      <h1>🎭 Reaction Roles</h1>
 
-      <!-- Neue Reaction Role erstellen -->
+      <!-- Create new Reaction Role -->
       <form action="/reactionrole" method="POST">
-        <label>Channel</label>
         <select name="channelId" required>
+          <option value="">Select Channel</option>
           <% channels.forEach(ch => { %>
             <option value="<%= ch.id %>">#<%= ch.name %></option>
           <% }) %>
-        </select>
+        </select><br>
 
-        <label>Title</label>
-        <input type="text" name="title" placeholder="Reaction Role Title" />
+        <input type="text" name="title" placeholder="Embed Title" /><br>
+        <textarea name="description" rows="5" placeholder="Embed Description"></textarea><br>
+        <label for="color">🎨 Pick a color:</label><br>
+        <input type="color" name="color" value="#FFD700"><br>
+        <input type="text" name="footer" placeholder="Footer Text" /><br>
 
-        <label>Description</label>
-        <textarea name="description" rows="3" placeholder="Description"></textarea>
-
-        <label>Color (hex)</label>
-        <input type="text" name="color" placeholder="#FFD700" />
-
-        <label>Footer</label>
-        <input type="text" name="footer" placeholder="Footer text" />
-
-        <div id="pairs">
-          <label>Emoji–Role Pairs</label>
-          <div>
-            <input type="text" name="emoji_1" placeholder="Emoji" style="width: 20%" />
-            <select name="role_1" style="width: 75%">
-              <% roles.forEach(r => { %>
-                <option value="<%= r.id %>">@<%= r.name %></option>
-              <% }) %>
-            </select>
-          </div>
-        </div>
-        <button type="button" onclick="addPair()">➕ Add Pair</button>
-        <button type="submit">📩 Create Reaction Role</button>
+        <h3>🧩 Emoji → Role Pairs</h3>
+        <div id="reaction-pairs"></div>
+        <button type="button" id="add-pair">+ Add Pair</button><br><br>
+        <button type="submit">Send Reaction Role Message</button>
       </form>
 
-      <script>
-        let pairCount = 1;
-        function addPair() {
-          pairCount++;
-          const div = document.createElement("div");
-          div.innerHTML = `
-            <input type="text" name="emoji_${pairCount}" placeholder="Emoji" style="width: 20%" />
-            <select name="role_${pairCount}" style="width: 75%">
-              ${document.querySelector("select[name='role_1']").innerHTML}
-            </select>
-          `;
-          document.getElementById("pairs").appendChild(div);
-        }
-      </script>
-
-      <!-- Aktive Reaction Roles anzeigen -->
-      <h3 style="margin-top:40px;color:#ffd700;">Active Reaction Roles</h3>
+      <!-- Active Reaction Roles -->
+      <h3 style="margin-top:30px;">Active Reaction Role Messages</h3>
       <div class="reaction-list">
         <% 
         const grouped = {};
@@ -188,7 +252,7 @@
           <div class="channel-name">💬 #<%= channel %></div>
           <% embeds.forEach(e => { %>
             <div class="reaction-item">
-              <form action="/reactionrole/update" method="POST">
+              <form class="edit-form" action="/reactionrole/update" method="POST">
                 <input type="hidden" name="messageId" value="<%= e.id %>" />
                 <label>Title</label>
                 <input type="text" name="title" value="<%= e.embed.title || '' %>" />
@@ -197,34 +261,92 @@
                 <textarea name="description" rows="2"><%= e.embed.description || '' %></textarea>
 
                 <label>Color</label>
-                <input type="text" name="color" value="<%= e.embed.color || '#FFD700' %>" />
+                <input type="color" name="color" value="<%= e.embed.color || '#FFD700' %>" />
 
                 <label>Footer</label>
                 <input type="text" name="footer" value="<%= e.embed.footer || '' %>" />
 
                 <label>Emoji–Role Pairs</label>
                 <% e.pairs.forEach((p, i) => { %>
-                  <div>
-                    <input type="text" name="emoji_<%= i+1 %>" value="<%= p.emoji %>" style="width: 20%" />
-                    <select name="role_<%= i+1 %>" style="width: 75%">
+                  <div class="pair">
+                    <input type="text" name="emoji_<%= i+1 %>" value="<%= p.emoji %>" />
+                    <select name="role_<%= i+1 %>">
                       <% roles.forEach(r => { %>
-                        <option value="<%= r.id %>" <%= r.id === p.roleId ? 'selected' : '' %>>@<%= r.name %></option>
+                        <option value="<%= r.id %>" <%= r.id === p.roleId ? 'selected' : '' %>><%= r.name %></option>
                       <% }) %>
                     </select>
+                    <button type="button" onclick="this.parentElement.remove()">❌</button>
                   </div>
                 <% }) %>
 
                 <button type="submit">💾 Update</button>
               </form>
-
-              <form action="/reactionrole/delete" method="POST" style="margin-top:5px;">
+              <form action="/reactionrole/delete" method="POST">
                 <input type="hidden" name="messageId" value="<%= e.id %>" />
-                <button type="submit" style="background:#ff4d4d;">🗑️ Delete</button>
+                <button type="submit" class="delete-btn">🗑️ Delete</button>
               </form>
             </div>
           <% }) %>
         <% }) %>
       </div>
-    </main>
-  </body>
+    </div>
+  </div>
+
+  <script>
+    // === Sidebar Tab Switcher ===
+    const embedTabBtn = document.getElementById('tab-embed');
+    const reactionTabBtn = document.getElementById('tab-reaction');
+    const embedTab = document.getElementById('embed-tab');
+    const reactionTab = document.getElementById('reaction-tab');
+
+    embedTabBtn.addEventListener('click', () => {
+      embedTab.style.display = '';
+      reactionTab.style.display = 'none';
+      embedTabBtn.classList.add('active');
+      reactionTabBtn.classList.remove('active');
+    });
+
+    reactionTabBtn.addEventListener('click', () => {
+      reactionTab.style.display = '';
+      embedTab.style.display = 'none';
+      reactionTabBtn.classList.add('active');
+      embedTabBtn.classList.remove('active');
+    });
+
+    // === Embed Preview ===
+    const title = document.getElementById('title');
+    const desc = document.getElementById('description');
+    const footer = document.getElementById('footer');
+    const color = document.getElementById('color');
+    const preview = document.getElementById('embed-preview');
+    function updatePreview() {
+      preview.style.borderLeft = `5px solid ${color.value}`;
+      preview.querySelector('.embed-title').textContent = title.value || 'Embed Title';
+      preview.querySelector('.embed-desc').textContent = desc.value || 'This is how your embed will look in Discord.';
+      preview.querySelector('.embed-footer').textContent = footer.value || 'MineTrade | Embed System';
+    }
+    [title, desc, footer, color].forEach(el => el.addEventListener('input', updatePreview));
+
+    // === Reaction Role Pair Adder ===
+    const pairsDiv = document.getElementById('reaction-pairs');
+    const addPairBtn = document.getElementById('add-pair');
+    let pairIndex = 1;
+    addPairBtn.addEventListener('click', () => {
+      const div = document.createElement('div');
+      div.className = 'pair';
+      div.innerHTML = `
+        <input type="text" name="emoji_${pairIndex}" placeholder="Emoji (💎)" required>
+        <select name="role_${pairIndex}" required>
+          <option value="">Select Role</option>
+          <% roles.forEach(r => { %>
+            <option value="<%= r.id %>"><%= r.name %></option>
+          <% }) %>
+        </select>
+        <button type="button" onclick="this.parentElement.remove()">❌</button>
+      `;
+      pairsDiv.appendChild(div);
+      pairIndex++;
+    });
+  </script>
+</body>
 </html>
