@@ -1,13 +1,4 @@
-// ==========================================================
-// FINAL STABLE /list COMMAND — No Errors, Fully Working
-// ==========================================================
-const {
-  SlashCommandBuilder,
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-} = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const fetch = require("node-fetch");
 
 module.exports = {
@@ -37,7 +28,6 @@ module.exports = {
     if (!focused || focused.length < 2) return interaction.respond([]);
 
     try {
-      // Mojang API to fetch player data
       const res = await fetch(
         `https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(focused)}`
       );
@@ -60,7 +50,10 @@ module.exports = {
     const price = interaction.options.getInteger("price");
     const listedBy = interaction.options.getUser("listedby");
 
-    await interaction.deferReply(); // Deferring the reply to prevent Discord from thinking it's taking too long
+    // Use deferReply only once to prevent interaction conflicts
+    if (!interaction.replied) {
+      await interaction.deferReply();
+    }
 
     try {
       // Step 1: Get UUID using Mojang API
