@@ -1,3 +1,7 @@
+// ==========================================================
+// MineTradeBot - Full Version with Reaction Role Dashboard
+// ==========================================================
+
 require("dotenv").config();
 const express = require("express");
 const session = require("express-session");
@@ -38,7 +42,7 @@ const WELCOME_CHANNEL_ID = process.env.WELCOME_CHANNEL_ID;
 const RESTOCK_ROLE_ID = process.env.RESTOCK_ROLE_ID;
 
 // === DASHBOARD CONFIG ===
-const DASHBOARD_PORT = 3000;
+const DASHBOARD_PORT = process.env.PORT || 3000;
 const SERVER_NAME = "MineTrade";
 const OWNER_ROLE_NAME = "👑 Owner";
 
@@ -112,14 +116,25 @@ app.get(
 );
 app.get("/logout", (req, res) => req.logout(() => res.redirect("/")));
 
+// === REACTION ROLE STORAGE ===
+const rrFile = path.join(__dirname, "reactionroles.json");
+let rr = fs.existsSync(rrFile)
+  ? JSON.parse(fs.readFileSync(rrFile, "utf8"))
+  : {};
+
 // === DASHBOARD ===
 app.get("/dashboard", isAuthenticated, async (req, res) => {
   const guild = client.guilds.cache.find((g) => g.name === SERVER_NAME);
-  if (!guild)
-    return res.send("❌ Server not found. Is the bot in your server?");
+  if (!guild) return res.send("❌ Server not found. Is the bot in your server?");
   const channels = guild.channels.cache.filter((ch) => ch.type === 0);
   const roles = guild.roles.cache.filter((r) => r.name !== "@everyone");
-  res.render("dashboard", { user: req.user, channels, roles, message: null });
+  res.render("dashboard", {
+    user: req.user,
+    channels,
+    roles,
+    rrData: rr,
+    message: null,
+  });
 });
 
 // === SEND EMBED (mit RESTOCK Feature) ===
@@ -128,27 +143,17 @@ app.post("/send", isAuthenticated, async (req, res) => {
   try {
     const channel = await client.channels.fetch(channelId);
     if (!channel) return res.send("❌ Channel not found");
-
-    const cleanColor = color ? color.replace("#", "") : "FFD700";
-    const embedColor = parseInt(cleanColor, 16);
-
     const embed = new EmbedBuilder()
       .setTitle(title || "Untitled Embed")
       .setDescription(description || "")
-      .setColor(embedColor)
+      .setColor(parseInt((color || "#FFD700").replace("#", ""), 16))
       .setFooter({
         text: footer || "MineTrade | Embed System",
         iconURL: FOOTER_ICON,
       });
-
-    if (restock === "on" && RESTOCK_ROLE_ID) {
-      await channel.send({
-        content: `<@&${RESTOCK_ROLE_ID}> 🔔 **Restock Alert!**`,
-      });
-    }
-
+    if (restock === "on" && RESTOCK_ROLE_ID)
+      await channel.send({ content: `<@&${RESTOCK_ROLE_ID}> 🔔 **Restock Alert!**` });
     await channel.send({ embeds: [embed] });
-
     const guild = client.guilds.cache.find((g) => g.name === SERVER_NAME);
     const channels = guild.channels.cache.filter((ch) => ch.type === 0);
     const roles = guild.roles.cache.filter((r) => r.name !== "@everyone");
@@ -156,113 +161,139 @@ app.post("/send", isAuthenticated, async (req, res) => {
       user: req.user,
       channels,
       roles,
+      rrData: rr,
       message: "✅ Embed sent successfully!",
     });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("❌ Error sending embed");
+  } catch (e) {
+    console.error(e);
+    res.status(500).send("Error sending embed");
   }
 });
 
 // ======================================================================
-// === 🧩 REACTION ROLE SYSTEM ==========================================
+// === 🧩 REACTION ROLE SYSTEM  (Create / List / Edit / Delete) =========
 // ======================================================================
-
-const reactionRoleFile = path.join(__dirname, "reactionroles.json");
-let reactionRoles = fs.existsSync(reactionRoleFile)
-  ? JSON.parse(fs.readFileSync(reactionRoleFile, "utf8"))
-  : {};
 
 app.post("/reactionrole", isAuthenticated, async (req, res) => {
   const { channelId, title, description, color, footer } = req.body;
   let pairs = [];
-
-  for (let key in req.body) {
-    if (key.startsWith("emoji_")) {
-      const index = key.split("_")[1];
-      const emoji = req.body[`emoji_${index}`];
-      const roleId = req.body[`role_${index}`];
-      if (emoji && roleId) pairs.push({ emoji, roleId });
+  for (let k in req.body)
+    if (k.startsWith("emoji_")) {
+      const i = k.split("_")[1];
+      if (req.body[`emoji_${i}`] && req.body[`role_${i}`])
+        pairs.push({ emoji: req.body[`emoji_${i}`], roleId: req.body[`role_${i}`] });
     }
-  }
-
-  if (pairs.length === 0)
-    return res.send("❌ Please add at least one emoji–role pair.");
+  if (!pairs.length) return res.send("❌ No emoji-role pairs.");
 
   try {
     const channel = await client.channels.fetch(channelId);
-    if (!channel) return res.send("❌ Channel not found");
-
     const embed = new EmbedBuilder()
       .setTitle(title || "Reaction Roles")
-      .setDescription(description || "React below to get your roles!")
-      .setColor(color ? parseInt(color.replace("#", ""), 16) : 0xFFD700)
-      .setFooter({
-        text: footer || "MineTrade | Reaction Roles",
-        iconURL: FOOTER_ICON,
-      });
-
-    // ✅ Nachricht ohne zusätzlichen Text oberhalb des Embeds
+      .setDescription(description || "React below to get roles!")
+      .setColor(parseInt((color || "#FFD700").replace("#", ""), 16))
+      .setFooter({ text: footer || "MineTrade | Reaction Roles", iconURL: FOOTER_ICON });
     const msg = await channel.send({ embeds: [embed] });
+    for (const p of pairs) await msg.react(p.emoji);
 
-    for (const pair of pairs) await msg.react(pair.emoji);
-
-    reactionRoles[msg.id] = pairs;
-    fs.writeFileSync(reactionRoleFile, JSON.stringify(reactionRoles, null, 2));
-
+    rr[msg.id] = {
+      channelId,
+      channelName: channel.name,
+      pairs,
+      embed: { title, description, color, footer },
+    };
+    fs.writeFileSync(rrFile, JSON.stringify(rr, null, 2));
     const guild = client.guilds.cache.find((g) => g.name === SERVER_NAME);
     const channels = guild.channels.cache.filter((ch) => ch.type === 0);
     const roles = guild.roles.cache.filter((r) => r.name !== "@everyone");
-
     res.render("dashboard", {
       user: req.user,
       channels,
       roles,
-      message: "✅ Reaction Role message sent successfully!",
+      rrData: rr,
+      message: "✅ Reaction Role message created!",
     });
   } catch (err) {
-    console.error("❌ Error sending reaction role message:", err);
-    res.status(500).send("❌ Error sending reaction role message");
+    console.error(err);
+    res.status(500).send("Error creating reaction role");
   }
 });
 
-// === Handle Reaction Add / Remove ===
-client.on("messageReactionAdd", async (reaction, user) => {
-  if (user.bot) return;
-  const data = reactionRoles[reaction.message.id];
-  if (!data) return;
+// === UPDATE EXISTING REACTION ROLE ===
+app.post("/reactionrole/update", isAuthenticated, async (req, res) => {
+  const { messageId, title, description, color, footer } = req.body;
+  if (!rr[messageId]) return res.send("❌ Unknown message ID.");
+  const data = rr[messageId];
+  const channel = await client.channels.fetch(data.channelId);
+  const msg = await channel.messages.fetch(messageId);
+  const embed = new EmbedBuilder()
+    .setTitle(title || "Reaction Roles")
+    .setDescription(description || "")
+    .setColor(parseInt((color || "#FFD700").replace("#", ""), 16))
+    .setFooter({ text: footer || "MineTrade | Reaction Roles", iconURL: FOOTER_ICON });
+  await msg.edit({ embeds: [embed] });
 
-  const pair = data.find((p) => p.emoji === reaction.emoji.name);
-  if (!pair) return;
+  let pairs = [];
+  for (let k in req.body)
+    if (k.startsWith("emoji_")) {
+      const i = k.split("_")[1];
+      if (req.body[`emoji_${i}`] && req.body[`role_${i}`])
+        pairs.push({ emoji: req.body[`emoji_${i}`], roleId: req.body[`role_${i}`] });
+    }
+  data.pairs = pairs;
+  data.embed = { title, description, color, footer };
+  fs.writeFileSync(rrFile, JSON.stringify(rr, null, 2));
 
-  const guild = reaction.message.guild;
-  const member = await guild.members.fetch(user.id);
-  const role = guild.roles.cache.get(pair.roleId);
-  if (role) await member.roles.add(role).catch(console.error);
+  for (const react of msg.reactions.cache.values()) await react.remove().catch(() => {});
+  for (const p of pairs) await msg.react(p.emoji);
+  res.redirect("/dashboard");
 });
 
-client.on("messageReactionRemove", async (reaction, user) => {
-  if (user.bot) return;
-  const data = reactionRoles[reaction.message.id];
-  if (!data) return;
-
-  const pair = data.find((p) => p.emoji === reaction.emoji.name);
-  if (!pair) return;
-
-  const guild = reaction.message.guild;
-  const member = await guild.members.fetch(user.id);
-  const role = guild.roles.cache.get(pair.roleId);
-  if (role) await member.roles.remove(role).catch(console.error);
+// === DELETE REACTION ROLE ===
+app.post("/reactionrole/delete", isAuthenticated, async (req, res) => {
+  const { messageId } = req.body;
+  if (!rr[messageId]) return res.send("❌ Unknown message ID.");
+  try {
+    const ch = await client.channels.fetch(rr[messageId].channelId);
+    const m = await ch.messages.fetch(messageId);
+    await m.delete();
+    delete rr[messageId];
+    fs.writeFileSync(rrFile, JSON.stringify(rr, null, 2));
+    res.redirect("/dashboard");
+  } catch (e) {
+    console.error(e);
+    res.send("Error deleting message.");
+  }
 });
+
+// === HANDLE REACTIONS ===
+client.on("messageReactionAdd", async (r, u) => {
+  if (u.bot || !rr[r.message.id]) return;
+  const pair = rr[r.message.id].pairs.find((p) => p.emoji === r.emoji.name);
+  if (!pair) return;
+  const member = await r.message.guild.members.fetch(u.id);
+  await member.roles.add(pair.roleId).catch(() => {});
+});
+client.on("messageReactionRemove", async (r, u) => {
+  if (u.bot || !rr[r.message.id]) return;
+  const pair = rr[r.message.id].pairs.find((p) => p.emoji === r.emoji.name);
+  if (!pair) return;
+  const member = await r.message.guild.members.fetch(u.id);
+  await member.roles.remove(pair.roleId).catch(() => {});
+});
+
+// === END OF PART 1 ===
+// === PART 2 CONTINUATION ===
 
 // ======================================================================
 // === BOT CORE + EXISTING SYSTEMS (Ticket, Verify, Welcome) ============
 // ======================================================================
 
+// === Start Express Dashboard ===
 app.listen(DASHBOARD_PORT, () =>
-  console.log(`🌐 Dashboard running on http://localhost:${DASHBOARD_PORT}`)
+  console.log(`🌐 Dashboard running on port ${DASHBOARD_PORT}`)
 );
 
+// === Bot Ready ===
 client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
@@ -274,7 +305,6 @@ client.on("interactionCreate", async (interaction) => {
 
   const guild = interaction.guild;
   const user = interaction.user;
-
   const existing = guild.channels.cache.find(
     (c) => c.name === `ticket-${user.username.toLowerCase()}`
   );
@@ -311,7 +341,6 @@ client.on("interactionCreate", async (interaction) => {
     .setStyle(ButtonStyle.Secondary);
 
   const closeRow = new ActionRowBuilder().addComponents(closeButton);
-
   await ticketChannel.send({ embeds: [ticketEmbed], components: [closeRow] });
 
   await interaction.reply({
@@ -320,7 +349,7 @@ client.on("interactionCreate", async (interaction) => {
   });
 });
 
-// === Close Ticket ===
+// === Ticket Close Confirmation ===
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
 
@@ -363,7 +392,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// === Verify Button ===
+// === Verify System ===
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
   if (interaction.customId !== "verify_user") return;
@@ -401,7 +430,7 @@ client.on("guildMemberAdd", async (member) => {
     if (!channel) return;
 
     const verifyChannel = member.guild.channels.cache.find(
-      (c) => c.name === "✅・verfify"
+      (c) => c.name === "✅・verify"
     );
     const rulesChannel = member.guild.channels.cache.find((c) =>
       c.name.includes("rules")
@@ -409,7 +438,7 @@ client.on("guildMemberAdd", async (member) => {
 
     const verifyMention = verifyChannel
       ? `<#${verifyChannel.id}>`
-      : "#✅・verfify";
+      : "#✅・verify";
     const rulesMention = rulesChannel ? `<#${rulesChannel.id}>` : "#rules";
 
     const embed = new EmbedBuilder()
@@ -433,4 +462,6 @@ client.on("guildMemberAdd", async (member) => {
   }
 });
 
+// === Bot Login ===
 client.login(TOKEN);
+
