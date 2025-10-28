@@ -28,39 +28,24 @@ module.exports = {
     await interaction.deferReply();
 
     try {
-      // === Get UUID from Mojang API ===
       const mojangRes = await fetch(`https://api.mojang.com/users/profiles/minecraft/${mcName}`);
       const mojangData = await mojangRes.json();
-      if (!mojangData?.id) {
-        await interaction.editReply("❌ Minecraft account not found!");
-        return;
-      }
-      const uuid = mojangData.id;
+      if (!mojangData?.id) return interaction.editReply("❌ Minecraft account not found!");
 
-      // === Fetch SkyBlock Data from Hypixel ===
+      const uuid = mojangData.id;
       const skyRes = await fetch(`https://api.hypixel.net/v2/skyblock/profiles?key=${apiKey}&uuid=${uuid}`);
       const skyData = await skyRes.json();
+      if (!skyData.success || !skyData.profiles?.length)
+        return interaction.editReply("⚠️ No SkyBlock profiles found for this player.");
 
-      if (!skyData.success || !skyData.profiles?.length) {
-        await interaction.editReply("⚠️ No SkyBlock profiles found for this player.");
-        return;
-      }
-
-      // === Get latest profile ===
-      const profile = skyData.profiles.sort((a, b) =>
-        (b.members[uuid]?.last_save || 0) - (a.members[uuid]?.last_save || 0)
-      )[0];
+      const profile = skyData.profiles.sort((a, b) => (b.members[uuid]?.last_save || 0) - (a.members[uuid]?.last_save || 0))[0];
       const member = profile.members[uuid];
 
-      // === Basic Info (you can expand later) ===
       const level = Math.round((member.leveling?.experience || 0) / 100);
       const slayers = member.slayer_bosses
-        ? Object.entries(member.slayer_bosses)
-            .map(([type, data]) => `${type}: ${data.xp || 0}`)
-            .join("\n")
+        ? Object.entries(member.slayer_bosses).map(([t, d]) => `${t}: ${d.xp || 0}`).join("\n")
         : "N/A";
 
-      // === Embed ===
       const embed = new EmbedBuilder()
         .setColor("#FFD700")
         .setTitle("💎 SkyBlock Account Listing")
@@ -75,18 +60,9 @@ module.exports = {
         .setFooter({ text: "MineTrade | Verified Hypixel Data", iconURL: process.env.FOOTER_ICON });
 
       const buttons = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("buy_account")
-          .setLabel("💵 Buy Account")
-          .setStyle(ButtonStyle.Success),
-        new ButtonBuilder()
-          .setCustomId("update_stats")
-          .setLabel("🔄 Update Stats")
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-          .setCustomId("unlist_account")
-          .setLabel("🗑️ Unlist")
-          .setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId("buy_account").setLabel("💵 Buy Account").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId("update_stats").setLabel("🔄 Update Stats").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("unlist_account").setLabel("🗑️ Unlist").setStyle(ButtonStyle.Danger)
       );
 
       await interaction.editReply({ embeds: [embed], components: [buttons] });
