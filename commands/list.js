@@ -1,5 +1,5 @@
 // ==========================================================
-// /commands/list.js — with Autocomplete + SkyCrypt API
+// /commands/list.js — with Working Autocomplete (PlayerDB API)
 // ==========================================================
 const {
   SlashCommandBuilder,
@@ -28,40 +28,36 @@ module.exports = {
         .setDescription("Who is listing the account?")
         .setRequired(true)),
 
-  // === Autocomplete logic ===
+  // === AUTOCOMPLETE HANDLER ===
   async autocomplete(interaction) {
-    const focusedValue = interaction.options.getFocused();
-    if (!focusedValue || focusedValue.length < 2) {
+    const focused = interaction.options.getFocused();
+
+    if (!focused || focused.length < 2) {
       return interaction.respond([]);
     }
 
     try {
-      const res = await fetch(`https://api.ashcon.app/mojang/v2/user/${focusedValue}`);
-      const suggestions = [];
+      // PlayerDB API: returns a list of matching names
+      const res = await fetch(`https://playerdb.co/api/search/minecraft/${encodeURIComponent(focused)}`);
+      const data = await res.json();
 
-      // Wenn ein exakter Treffer gefunden wird
-      if (res.ok) {
-        const data = await res.json();
-        suggestions.push({ name: data.username, value: data.username });
+      if (!data.success || !data.data || !data.data.players) {
+        return interaction.respond([]);
       }
 
-      // Zusätzlich generische Mojang-API-Abfrage für Teilstrings
-      const res2 = await fetch(`https://api.ashcon.app/mojang/v2/user/${focusedValue}`);
-      if (res2.ok) {
-        const data2 = await res2.json();
-        if (!suggestions.find(s => s.value === data2.username)) {
-          suggestions.push({ name: data2.username, value: data2.username });
-        }
-      }
+      const results = data.data.players.slice(0, 10).map(player => ({
+        name: player.username,
+        value: player.username,
+      }));
 
-      await interaction.respond(suggestions.slice(0, 5));
+      await interaction.respond(results);
     } catch (err) {
       console.error("Autocomplete error:", err);
       await interaction.respond([]);
     }
   },
 
-  // === Command execution ===
+  // === COMMAND EXECUTION ===
   async execute(interaction) {
     const mcName = interaction.options.getString("account");
     const price = interaction.options.getInteger("price");
@@ -70,28 +66,27 @@ module.exports = {
     await interaction.deferReply();
 
     try {
-      // === Step 1: Get UUID via Mojang ===
-      const mojangRes = await fetch(`https://api.mojang.com/users/profiles/minecraft/${mcName}`);
-      if (!mojangRes.ok) {
-        return await interaction.editReply("❌ Player not found. Please use autocomplete to select a valid name.");
+      // === Step 1: UUID via PlayerDB ===
+      const uuidRes = await fetch(`https://playerdb.co/api/player/minecraft/${encodeURIComponent(mcName)}`);
+      const uuidData = await uuidRes.json();
+      if (!uuidData.success) {
+        return await interaction.editReply("❌ Player not found. Please use autocomplete.");
       }
-      const mojangData = await mojangRes.json();
-      const uuid = mojangData.id;
+      const uuid = uuidData.data.player.raw_id;
 
-      // === Step 2: Fetch SkyBlock data from SkyCrypt ===
-      const res = await fetch(`https://sky.shiiyu.moe/api/v2/profile/${uuid}`);
-      if (!res.ok) {
-        console.log("SkyCrypt API Error:", res.status, res.statusText);
-        return await interaction.editReply("⚠️ No SkyBlock data found for this player (API access off or profile private).");
-      }
-
-      const data = await res.json();
-      if (!data || !data.profiles || Object.keys(data.profiles).length === 0) {
-        return await interaction.editReply("⚠️ This player has no public SkyBlock profiles.");
+      // === Step 2: SkyBlock data via SkyCrypt ===
+      const skyRes = await fetch(`https://sky.shiiyu.moe/api/v2/profile/${uuid}`);
+      if (!skyRes.ok) {
+        console.log("SkyCrypt API Error:", skyRes.status);
+        return await interaction.editReply("⚠️ No SkyBlock data found for this player. Maybe profile is private.");
       }
 
-      // === Step 3: Extract Data ===
-      const profile = Object.values(data.profiles)[0].data;
+      const skyData = await skyRes.json();
+      if (!skyData.profiles || Object.keys(skyData.profiles).length === 0) {
+        return await interaction.editReply("⚠️ No SkyBlock profiles found for this player.");
+      }
+
+      const profile = Object.values(skyData.profiles)[0].data;
       const stats = profile.stats || {};
       const slayers = profile.slayer?.xp || {};
       const networth = profile.networth?.networth?.toLocaleString() || "Unknown";
@@ -102,7 +97,7 @@ module.exports = {
         .map(([boss, xp]) => `${boss}: ${Math.round(xp / 1000)}k XP`)
         .join("\n") || "N/A";
 
-      // === Step 4: Build Embed ===
+      // === Step 3: Build Embed ===
       const embed = new EmbedBuilder()
         .setColor("#FFD700")
         .setTitle("💎 Account Information")
