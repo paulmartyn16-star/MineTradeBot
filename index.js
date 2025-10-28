@@ -335,4 +335,5 @@ client.on("guildMemberAdd", async (member) => {
   }
 });
 
-client.login(TOKEN);
+client.login(TOKEN);// test push system
+
