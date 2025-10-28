@@ -1,5 +1,5 @@
 // ==========================================================
-// MineTradeBot - Full Version with Reaction Role Dashboard
+// MineTradeBot - Full Version with Reaction Role Dashboard + Command Handler
 // ==========================================================
 
 require("dotenv").config();
@@ -10,6 +10,7 @@ const Strategy = require("passport-discord").Strategy;
 const bodyParser = require("body-parser");
 const path = require("path");
 const fs = require("fs");
+const fetch = require("node-fetch");
 const {
   Client,
   GatewayIntentBits,
@@ -18,6 +19,7 @@ const {
   ButtonStyle,
   ActionRowBuilder,
   Partials,
+  Collection,
 } = require("discord.js");
 
 // === DISCORD BOT SETUP ===
@@ -32,7 +34,7 @@ const client = new Client({
   partials: [Partials.Channel, Partials.Message, Partials.Reaction],
 });
 
-// === ENV VARIABLES ===
+// === LOAD ENV VARIABLES ===
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
@@ -40,13 +42,11 @@ const FOOTER_ICON = process.env.FOOTER_ICON;
 const CATEGORY_ID = process.env.CATEGORY_ID;
 const WELCOME_CHANNEL_ID = process.env.WELCOME_CHANNEL_ID;
 const RESTOCK_ROLE_ID = process.env.RESTOCK_ROLE_ID;
-
-// === DASHBOARD CONFIG ===
 const DASHBOARD_PORT = process.env.PORT || 3000;
 const SERVER_NAME = "MineTrade";
 const OWNER_ROLE_NAME = "👑 Owner";
 
-// === EXPRESS DASHBOARD SETUP ===
+// === EXPRESS DASHBOARD ===
 const app = express();
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(express.static("public"));
@@ -57,12 +57,9 @@ app.use(
     secret: "minetrade_secret_key",
     resave: false,
     saveUninitialized: false,
-    cookie: {
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 Tage Session speichern
-    },
+    cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 },
   })
 );
-
 
 // === DISCORD OAUTH2 LOGIN ===
 passport.serializeUser((user, done) => done(null, user));
@@ -79,25 +76,20 @@ passport.use(
     (accessToken, refreshToken, profile, done) => done(null, profile)
   )
 );
-
 app.use(passport.initialize());
 app.use(passport.session());
 
-// === ROLLENBASIERTE AUTHENTIFIZIERUNG ===
+// === OWNER AUTH CHECK ===
 const isAuthenticated = async (req, res, next) => {
   if (!req.isAuthenticated()) return res.redirect("/login");
-
   try {
     const guild = client.guilds.cache.find((g) => g.name === SERVER_NAME);
     if (!guild) return res.send("❌ Server not found.");
-
     const member = await guild.members.fetch(req.user.id).catch(() => null);
     if (!member) return res.send("❌ You are not a member of the server.");
-
     const hasRole = member.roles.cache.some(
       (r) => r.name.toLowerCase() === OWNER_ROLE_NAME.toLowerCase()
     );
-
     if (!hasRole) return res.send("🚫 Access denied – Owner role required.");
     return next();
   } catch (err) {
@@ -111,7 +103,6 @@ app.get("/", (req, res) => {
   if (!req.isAuthenticated()) return res.redirect("/login");
   res.redirect("/dashboard");
 });
-
 app.get("/login", passport.authenticate("discord"));
 app.get(
   "/callback",
@@ -141,7 +132,7 @@ app.get("/dashboard", isAuthenticated, async (req, res) => {
   });
 });
 
-// === SEND EMBED (mit RESTOCK Feature) ===
+// === EMBED BUILDER ===
 app.post("/send", isAuthenticated, async (req, res) => {
   const { channelId, title, description, color, footer, restock } = req.body;
   try {
@@ -151,10 +142,7 @@ app.post("/send", isAuthenticated, async (req, res) => {
       .setTitle(title || "Untitled Embed")
       .setDescription(description || "")
       .setColor(parseInt((color || "#FFD700").replace("#", ""), 16))
-      .setFooter({
-        text: footer || "MineTrade | Embed System",
-        iconURL: FOOTER_ICON,
-      });
+      .setFooter({ text: footer || "MineTrade | Embed System", iconURL: FOOTER_ICON });
     if (restock === "on" && RESTOCK_ROLE_ID)
       await channel.send({ content: `<@&${RESTOCK_ROLE_ID}> 🔔 **Restock Alert!**` });
     await channel.send({ embeds: [embed] });
@@ -174,21 +162,16 @@ app.post("/send", isAuthenticated, async (req, res) => {
   }
 });
 
-// ======================================================================
-// === 🧩 REACTION ROLE SYSTEM  (Create / List / Edit / Delete) =========
-// ======================================================================
-
+// === REACTION ROLE CREATION / EDIT / DELETE ===
 app.post("/reactionrole", isAuthenticated, async (req, res) => {
   const { channelId, title, description, color, footer } = req.body;
-  let pairs = [];
-  for (let k in req.body)
-    if (k.startsWith("emoji_")) {
-      const i = k.split("_")[1];
-      if (req.body[`emoji_${i}`] && req.body[`role_${i}`])
-        pairs.push({ emoji: req.body[`emoji_${i}`], roleId: req.body[`role_${i}`] });
-    }
-  if (!pairs.length) return res.send("❌ No emoji-role pairs.");
+  const pairs = Object.keys(req.body)
+    .filter((k) => k.startsWith("emoji_"))
+    .map((k) => k.split("_")[1])
+    .filter((i) => req.body[`emoji_${i}`] && req.body[`role_${i}`])
+    .map((i) => ({ emoji: req.body[`emoji_${i}`], roleId: req.body[`role_${i}`] }));
 
+  if (!pairs.length) return res.send("❌ No emoji-role pairs.");
   try {
     const channel = await client.channels.fetch(channelId);
     const embed = new EmbedBuilder()
@@ -199,30 +182,19 @@ app.post("/reactionrole", isAuthenticated, async (req, res) => {
     const msg = await channel.send({ embeds: [embed] });
     for (const p of pairs) await msg.react(p.emoji);
 
-    rr[msg.id] = {
-      channelId,
-      channelName: channel.name,
-      pairs,
-      embed: { title, description, color, footer },
-    };
+    rr[msg.id] = { channelId, channelName: channel.name, pairs, embed: { title, description, color, footer } };
     fs.writeFileSync(rrFile, JSON.stringify(rr, null, 2));
+
     const guild = client.guilds.cache.find((g) => g.name === SERVER_NAME);
     const channels = guild.channels.cache.filter((ch) => ch.type === 0);
     const roles = guild.roles.cache.filter((r) => r.name !== "@everyone");
-    res.render("dashboard", {
-      user: req.user,
-      channels,
-      roles,
-      rrData: rr,
-      message: "✅ Reaction Role message created!",
-    });
+    res.render("dashboard", { user: req.user, channels, roles, rrData: rr, message: "✅ Reaction Role created!" });
   } catch (err) {
     console.error(err);
     res.status(500).send("Error creating reaction role");
   }
 });
 
-// === UPDATE EXISTING REACTION ROLE ===
 app.post("/reactionrole/update", isAuthenticated, async (req, res) => {
   const { messageId, title, description, color, footer } = req.body;
   if (!rr[messageId]) return res.send("❌ Unknown message ID.");
@@ -236,23 +208,20 @@ app.post("/reactionrole/update", isAuthenticated, async (req, res) => {
     .setFooter({ text: footer || "MineTrade | Reaction Roles", iconURL: FOOTER_ICON });
   await msg.edit({ embeds: [embed] });
 
-  let pairs = [];
-  for (let k in req.body)
-    if (k.startsWith("emoji_")) {
-      const i = k.split("_")[1];
-      if (req.body[`emoji_${i}`] && req.body[`role_${i}`])
-        pairs.push({ emoji: req.body[`emoji_${i}`], roleId: req.body[`role_${i}`] });
-    }
+  const pairs = Object.keys(req.body)
+    .filter((k) => k.startsWith("emoji_"))
+    .map((k) => k.split("_")[1])
+    .filter((i) => req.body[`emoji_${i}`] && req.body[`role_${i}`])
+    .map((i) => ({ emoji: req.body[`emoji_${i}`], roleId: req.body[`role_${i}`] }));
+
   data.pairs = pairs;
   data.embed = { title, description, color, footer };
   fs.writeFileSync(rrFile, JSON.stringify(rr, null, 2));
-
   for (const react of msg.reactions.cache.values()) await react.remove().catch(() => {});
   for (const p of pairs) await msg.react(p.emoji);
   res.redirect("/dashboard");
 });
 
-// === DELETE REACTION ROLE ===
 app.post("/reactionrole/delete", isAuthenticated, async (req, res) => {
   const { messageId } = req.body;
   if (!rr[messageId]) return res.send("❌ Unknown message ID.");
@@ -269,7 +238,6 @@ app.post("/reactionrole/delete", isAuthenticated, async (req, res) => {
   }
 });
 
-// === HANDLE REACTIONS ===
 client.on("messageReactionAdd", async (r, u) => {
   if (u.bot || !rr[r.message.id]) return;
   const pair = rr[r.message.id].pairs.find((p) => p.emoji === r.emoji.name);
@@ -285,41 +253,53 @@ client.on("messageReactionRemove", async (r, u) => {
   await member.roles.remove(pair.roleId).catch(() => {});
 });
 
-// === END OF PART 1 ===
-// === PART 2 CONTINUATION ===
+// === DASHBOARD START ===
+app.listen(DASHBOARD_PORT, () => console.log(`🌐 Dashboard running on port ${DASHBOARD_PORT}`));
 
-// ======================================================================
-// === BOT CORE + EXISTING SYSTEMS (Ticket, Verify, Welcome) ============
-// ======================================================================
+// === COMMAND HANDLER SETUP ===
+client.commands = new Collection();
+const commandsPath = path.join(__dirname, "commands");
+if (fs.existsSync(commandsPath)) {
+  const commandFiles = fs.readdirSync(commandsPath).filter((file) => file.endsWith(".js"));
+  for (const file of commandFiles) {
+    const command = require(path.join(commandsPath, file));
+    client.commands.set(command.data.name, command);
+  }
+}
 
-// === Start Express Dashboard ===
-app.listen(DASHBOARD_PORT, () =>
-  console.log(`🌐 Dashboard running on port ${DASHBOARD_PORT}`)
-);
-
-// === Bot Ready ===
+// === BOT READY ===
 client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
+});
+
+// === SLASH COMMAND EXECUTION ===
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+  const command = client.commands.get(interaction.commandName);
+  if (!command) return;
+  try {
+    await command.execute(interaction);
+  } catch (err) {
+    console.error(err);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.followUp({ content: "❌ Error executing command.", ephemeral: true });
+    } else {
+      await interaction.reply({ content: "❌ Error executing command.", ephemeral: true });
+    }
+  }
 });
 
 // === Support Ticket System ===
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
   if (interaction.customId !== "create_support_ticket") return;
-
   const guild = interaction.guild;
   const user = interaction.user;
-  const existing = guild.channels.cache.find(
-    (c) => c.name === `ticket-${user.username.toLowerCase()}`
-  );
+  const existing = guild.channels.cache.find((c) => c.name === `ticket-${user.username.toLowerCase()}`);
   if (existing) {
-    await interaction.reply({
-      content: `❌ You already have an open ticket: ${existing}`,
-      ephemeral: true,
-    });
+    await interaction.reply({ content: `❌ You already have an open ticket: ${existing}`, ephemeral: true });
     return;
   }
-
   const ticketChannel = await guild.channels.create({
     name: `ticket-${user.username}`,
     type: 0,
@@ -330,7 +310,6 @@ client.on("interactionCreate", async (interaction) => {
       { id: user.id, allow: ["ViewChannel", "SendMessages", "AttachFiles"] },
     ],
   });
-
   const ticketEmbed = new EmbedBuilder()
     .setColor("#FFD700")
     .setTitle("🎟️ MineTrade Support Ticket")
@@ -338,73 +317,37 @@ client.on("interactionCreate", async (interaction) => {
       `Hello ${user}, 👋\n\nPlease describe your issue below. A support member will assist you shortly.\n\nClick **🔒 Close Ticket** when you're done.`
     )
     .setFooter({ text: "MineTrade | Support", iconURL: FOOTER_ICON });
-
-  const closeButton = new ButtonBuilder()
-    .setCustomId("close_ticket")
-    .setLabel("🔒 Close Ticket")
-    .setStyle(ButtonStyle.Secondary);
-
+  const closeButton = new ButtonBuilder().setCustomId("close_ticket").setLabel("🔒 Close Ticket").setStyle(ButtonStyle.Secondary);
   const closeRow = new ActionRowBuilder().addComponents(closeButton);
   await ticketChannel.send({ embeds: [ticketEmbed], components: [closeRow] });
-
-  await interaction.reply({
-    content: `✅ Your support ticket has been created: ${ticketChannel}`,
-    ephemeral: true,
-  });
+  await interaction.reply({ content: `✅ Your support ticket has been created: ${ticketChannel}`, ephemeral: true });
 });
 
-// === Ticket Close Confirmation ===
+// === Close Ticket ===
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
-
   if (interaction.customId === "close_ticket") {
-    const confirmButton = new ButtonBuilder()
-      .setCustomId("confirm_close")
-      .setLabel("✅ Confirm Close")
-      .setStyle(ButtonStyle.Danger);
-
-    const cancelButton = new ButtonBuilder()
-      .setCustomId("cancel_close")
-      .setLabel("❌ Cancel")
-      .setStyle(ButtonStyle.Secondary);
-
+    const confirmButton = new ButtonBuilder().setCustomId("confirm_close").setLabel("✅ Confirm Close").setStyle(ButtonStyle.Danger);
+    const cancelButton = new ButtonBuilder().setCustomId("cancel_close").setLabel("❌ Cancel").setStyle(ButtonStyle.Secondary);
     const row = new ActionRowBuilder().addComponents(confirmButton, cancelButton);
-
-    await interaction.reply({
-      content: "Are you sure you want to close this ticket?",
-      components: [row],
-      ephemeral: true,
-    });
+    await interaction.reply({ content: "Are you sure you want to close this ticket?", components: [row], ephemeral: true });
   }
-
   if (interaction.customId === "confirm_close") {
     const channel = interaction.channel;
-    await interaction.reply({
-      content: "🔒 Ticket closed successfully.",
-      ephemeral: true,
-    });
-    await channel.delete().catch((err) =>
-      console.error("Error deleting ticket:", err)
-    );
+    await interaction.reply({ content: "🔒 Ticket closed successfully.", ephemeral: true });
+    await channel.delete().catch((err) => console.error("Error deleting ticket:", err));
   }
-
   if (interaction.customId === "cancel_close") {
-    await interaction.reply({
-      content: "❎ Ticket closure cancelled.",
-      ephemeral: true,
-    });
+    await interaction.reply({ content: "❎ Ticket closure cancelled.", ephemeral: true });
   }
 });
 
 // === Verify System ===
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isButton()) return;
-  if (interaction.customId !== "verify_user") return;
-
+  if (!interaction.isButton() || interaction.customId !== "verify_user") return;
   const guild = interaction.guild;
   const member = await guild.members.fetch(interaction.user.id);
   const verifiedRole = guild.roles.cache.find((r) => r.name === "💎 Verified");
-
   if (!verifiedRole) {
     await interaction.reply({
       content: "❌ The '💎 Verified' role doesn't exist! Please create it first.",
@@ -412,60 +355,35 @@ client.on("interactionCreate", async (interaction) => {
     });
     return;
   }
-
   if (member.roles.cache.has(verifiedRole.id)) {
-    await interaction.reply({
-      content: "✅ You are already verified!",
-      ephemeral: true,
-    });
+    await interaction.reply({ content: "✅ You are already verified!", ephemeral: true });
   } else {
     await member.roles.add(verifiedRole);
-    await interaction.reply({
-      content: "💎 You have been verified successfully! Welcome to MineTrade.",
-      ephemeral: true,
-    });
+    await interaction.reply({ content: "💎 You have been verified successfully! Welcome to MineTrade.", ephemeral: true });
   }
 });
 
-// === Welcome Message ===
+// === Welcome System ===
 client.on("guildMemberAdd", async (member) => {
   try {
     const channel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
     if (!channel) return;
-
-    const verifyChannel = member.guild.channels.cache.find(
-      (c) => c.name === "✅・verify"
-    );
-    const rulesChannel = member.guild.channels.cache.find((c) =>
-      c.name.includes("rules")
-    );
-
-    const verifyMention = verifyChannel
-      ? `<#${verifyChannel.id}>`
-      : "#✅・verify";
+    const verifyChannel = member.guild.channels.cache.find((c) => c.name === "✅・verify");
+    const rulesChannel = member.guild.channels.cache.find((c) => c.name.includes("rules"));
+    const verifyMention = verifyChannel ? `<#${verifyChannel.id}>` : "#✅・verify";
     const rulesMention = rulesChannel ? `<#${rulesChannel.id}>` : "#rules";
-
     const embed = new EmbedBuilder()
       .setColor("#FFD700")
       .setTitle("👋 Welcome to MineTrade!")
       .setDescription(
-        `Hey ${member}, welcome to **MineTrade**!\n\n` +
-          "We're glad to have you here. Please make sure to:\n" +
-          `✅ Verify yourself in ${verifyMention}\n` +
-          `📜 Read the rules in ${rulesMention}\n\n` +
-          "We hope you enjoy our service 💎"
+        `Hey ${member}, welcome to **MineTrade**!\n\nWe're glad to have you here. Please make sure to:\n✅ Verify yourself in ${verifyMention}\n📜 Read the rules in ${rulesMention}\n\nWe hope you enjoy our service 💎`
       )
-      .setFooter({
-        text: "MineTrade | Welcome System",
-        iconURL: FOOTER_ICON,
-      });
-
+      .setFooter({ text: "MineTrade | Welcome System", iconURL: FOOTER_ICON });
     await channel.send({ embeds: [embed] });
   } catch (err) {
     console.error("❌ Error sending welcome message:", err);
   }
 });
 
-// === Bot Login ===
+// === LOGIN ===
 client.login(TOKEN);
-
