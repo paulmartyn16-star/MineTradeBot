@@ -1,5 +1,5 @@
 // ==========================================================
-// /commands/list.js — Stable Version (Ashcon + Shiiyu API)
+// /commands/list.js — Full version using Hypixel official API
 // ==========================================================
 const {
   SlashCommandBuilder,
@@ -9,6 +9,8 @@ const {
   ButtonStyle,
 } = require("discord.js");
 const fetch = require("node-fetch");
+
+const HYPIXEL_KEY = process.env.HYPIXEL_API_KEY;
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -32,90 +34,72 @@ module.exports = {
     const price = interaction.options.getInteger("price");
     const listedBy = interaction.options.getUser("listedby");
 
-    // acknowledge immediately
-    await interaction.deferReply({ ephemeral: false });
+    await interaction.deferReply();
 
     try {
-      // --- Step 1: Get UUID from Ashcon ---
-      const ashconRes = await fetch(`https://api.ashcon.app/mojang/v2/user/${mcName}`);
-      if (!ashconRes.ok) {
-        return await interaction.editReply("❌ Could not fetch Minecraft UUID. Make sure the username is valid!");
+      // === Step 1: Get UUID ===
+      const mojangRes = await fetch(`https://api.mojang.com/users/profiles/minecraft/${mcName}`);
+      if (!mojangRes.ok) return await interaction.editReply("❌ Invalid Minecraft username.");
+      const mojangData = await mojangRes.json();
+      const uuid = mojangData.id;
+
+      // === Step 2: Fetch player data from Hypixel ===
+      const playerRes = await fetch(`https://api.hypixel.net/player?uuid=${uuid}&key=${HYPIXEL_KEY}`);
+      const playerData = await playerRes.json();
+
+      if (!playerData.success) {
+        console.log("Hypixel API Response:", playerData);
+        return await interaction.editReply(`❌ Hypixel API Error: ${playerData.cause || "Unknown"}`);
+      }
+      if (!playerData.player) {
+        return await interaction.editReply("⚠️ No player data found. Maybe the account never joined Hypixel.");
       }
 
-      const ashconData = await ashconRes.json();
-      const uuid = ashconData.uuid;
-      if (!uuid) return await interaction.editReply("❌ Player not found on Mojang.");
-
-      // --- Step 2: Get SkyBlock Data from Shiiyu API ---
-      const res = await fetch(`https://sky.shiiyu.moe/api/v2/profile/${uuid}`);
-      if (!res.ok) {
-        console.log("Shiiyu API Error:", res.status, res.statusText);
-        return await interaction.editReply("⚠️ No SkyBlock data found. Maybe API Access is disabled on that account.");
+      // === Step 3: Fetch SkyBlock Profiles ===
+      const sbRes = await fetch(`https://api.hypixel.net/skyblock/profiles?uuid=${uuid}&key=${HYPIXEL_KEY}`);
+      const sbData = await sbRes.json();
+      if (!sbData.success || !sbData.profiles) {
+        return await interaction.editReply("⚠️ No SkyBlock profiles found or API access disabled.");
       }
 
-      const data = await res.json();
-      if (!data || !data.profiles || Object.keys(data.profiles).length === 0) {
-        return await interaction.editReply("⚠️ No SkyBlock profiles found for this player.");
-      }
+      // === Step 4: Use the most recent profile ===
+      const profile = sbData.profiles.sort((a, b) => b.last_save - a.last_save)[0];
+      const member = profile.members[uuid];
 
-      // --- Step 3: Pick most recent profile ---
-      const profile = Object.values(data.profiles)[0].data;
-      const stats = profile?.stats || {};
-      const slayers = profile?.slayer?.xp || {};
-      const networth = profile?.networth?.networth?.toLocaleString() || "Unknown";
-      const skillAvg = stats?.average_level?.toFixed(2) || "N/A";
-      const catacombs = stats?.catacombs?.level?.toFixed(2) || "N/A";
-      const level = profile?.skyblock_level?.level || "N/A";
-      const slayerList = Object.entries(slayers)
-        .map(([boss, xp]) => `${boss}: ${Math.round(xp / 1000)}k XP`)
-        .join("\n") || "N/A";
+      const networth = member.coin_purse?.toLocaleString() || "Unknown";
+      const skillAvg = (member.experience_skill_farming || 0 +
+        member.experience_skill_mining || 0 +
+        member.experience_skill_combat || 0 +
+        member.experience_skill_fishing || 0 +
+        member.experience_skill_foraging || 0 +
+        member.experience_skill_alchemy || 0) / 6 || 0;
 
-      // --- Step 4: Build Embed ---
       const embed = new EmbedBuilder()
         .setColor("#FFD700")
         .setTitle("💎 Account Information")
         .setThumbnail(`https://mc-heads.net/avatar/${mcName}`)
         .addFields(
           { name: "🎮 Account", value: `\`${mcName}\``, inline: true },
-          { name: "🧠 Skill Average", value: `${skillAvg}`, inline: true },
-          { name: "🏰 Catacombs", value: `${catacombs}`, inline: true },
-          { name: "⚔️ Slayers", value: slayerList, inline: false },
-          { name: "💰 Networth", value: `${networth} Coins`, inline: true },
-          { name: "📈 Level", value: `${level}`, inline: true },
+          { name: "🧠 Skill Average", value: skillAvg.toFixed(1).toString(), inline: true },
+          { name: "💰 Purse", value: `${networth} Coins`, inline: true },
           { name: "💵 Price", value: `$${price}`, inline: true },
           { name: "📋 Listed by", value: `<@${listedBy.id}>`, inline: true }
         )
         .setFooter({
-          text: "MineTrade | Verified via Shiiyu API",
+          text: "MineTrade | Data via Hypixel API",
           iconURL: process.env.FOOTER_ICON,
         });
 
       const buttons = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("buy_account")
-          .setLabel("💵 Buy Account")
-          .setStyle(ButtonStyle.Success),
-        new ButtonBuilder()
-          .setCustomId("update_stats")
-          .setLabel("🔄 Update Stats")
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-          .setCustomId("unlist_account")
-          .setLabel("🗑️ Unlist")
-          .setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId("buy_account").setLabel("💵 Buy").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId("update_stats").setLabel("🔄 Update Stats").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("unlist").setLabel("🗑️ Unlist").setStyle(ButtonStyle.Danger)
       );
 
       await interaction.editReply({ embeds: [embed], components: [buttons] });
     } catch (err) {
-      console.error("❌ Error in /list command:", err);
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({
-          content: "❌ Error executing command.",
-          ephemeral: true,
-        }).catch(() => {});
-      } else {
-        await interaction.editReply("❌ Error executing command.");
-      }
+      console.error("❌ Error executing /list:", err);
+      await interaction.editReply("❌ Error while fetching data. Please try again later.");
     }
   },
 };
