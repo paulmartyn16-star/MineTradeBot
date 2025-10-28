@@ -28,13 +28,15 @@ module.exports = {
     if (!focused || focused.length < 2) return interaction.respond([]);
 
     try {
+      // Use Minecraft Name Autocomplete API
       const res = await fetch(
-        `https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(focused)}`
+        `https://api.mojang.com/profiles/minecraft?names=${encodeURIComponent(focused)}`
       );
       const data = await res.json();
 
-      if (data && data.id) {
-        await interaction.respond([{ name: data.name, value: data.name }]);
+      if (data.length > 0) {
+        const names = data.map((player) => ({ name: player.name, value: player.name }));
+        await interaction.respond(names);
       } else {
         await interaction.respond([]);
       }
