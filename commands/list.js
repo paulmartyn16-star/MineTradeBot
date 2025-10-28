@@ -72,11 +72,14 @@ module.exports = {
       const uuidData = await uuidRes.json();
       const uuid = uuidData.id;
 
+      console.log(`UUID retrieved: ${uuid}`); // Log UUID
+
       // Step 2: Fetch SkyBlock Data using Hypixel API
       const sbRes = await fetch(
         `https://api.hypixel.net/player?key=${process.env.HYPIXEL_API_KEY}&uuid=${uuid}`
       );
       if (!sbRes.ok) {
+        console.log(`SkyBlock API Error: ${sbRes.statusText}`);
         return await interaction.editReply(
           "⚠️ Could not fetch SkyBlock data. Make sure API access is enabled."
         );
@@ -84,6 +87,7 @@ module.exports = {
 
       const sbData = await sbRes.json();
       if (!sbData.success || !sbData.player) {
+        console.log("SkyBlock player data missing.");
         return await interaction.editReply(
           "⚠️ This player has no SkyBlock profile or it's private."
         );
@@ -103,6 +107,8 @@ module.exports = {
       const slayerList = Object.entries(slayers)
         .map(([boss, xp]) => `${boss}: ${(xp / 1000).toFixed(1)}k XP`)
         .join("\n") || "N/A";
+
+      console.log("SkyBlock data retrieved:", skyblockStats); // Log SkyBlock data
 
       // Step 4: Build Embed
       const embed = new EmbedBuilder()
