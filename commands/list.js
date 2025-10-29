@@ -8,7 +8,7 @@ const {
 } = require("discord.js");
 const fetch = require("node-fetch");
 
-// === Autocomplete (PlayerDB API) ===
+// === Minecraft Name Autocomplete (PlayerDB API) ===
 async function fetchNameSuggestions(query) {
   try {
     if (!query || query.length < 2) return [];
@@ -58,28 +58,18 @@ module.exports = {
     await interaction.deferReply();
 
     try {
-      // === UUID abrufen ===
-      const uuidRes = await fetch(`https://api.mojang.com/users/profiles/minecraft/${mcName}`);
-      if (!uuidRes.ok) return interaction.editReply("❌ Invalid Minecraft username.");
-      const uuidData = await uuidRes.json();
-      const uuid = uuidData.id;
-
-      // === Hypixel-Profile abrufen ===
-      const res = await fetch(`https://api.hypixel.net/skyblock/profiles?key=${process.env.HYPIXEL_API_KEY}&uuid=${uuid}`);
+      // === SkyCrypt API aufrufen ===
+      const res = await fetch(`https://sky.shiiyu.moe/api/v2/profile/${mcName}`);
       const data = await res.json();
 
-      if (!data.success || !data.profiles || data.profiles.length === 0)
+      if (!data.profiles || Object.keys(data.profiles).length === 0)
         return interaction.editReply("⚠️ This player has no SkyBlock profiles.");
 
       // === Profile-Auswahl vorbereiten ===
-      const profileOptions = data.profiles.map((p) => {
-        const cuteName = p.cute_name || "Unknown";
-        const lastSave = new Date(p.members[uuid]?.last_save || 0).toLocaleString("de-DE");
-        return {
-          label: `${cuteName} (Last Save: ${lastSave})`,
-          value: p.profile_id,
-        };
-      });
+      const profileOptions = Object.entries(data.profiles).map(([key, profile]) => ({
+        label: `${profile.cute_name} (${profile.current ? "Active" : "Inactive"})`,
+        value: key,
+      }));
 
       const profileMenu = new StringSelectMenuBuilder()
         .setCustomId("select_profile")
@@ -101,45 +91,55 @@ module.exports = {
 
       collector.on("collect", async (i) => {
         const selected = i.values[0];
-        const profile = data.profiles.find((p) => p.profile_id === selected);
-        const member = profile.members[uuid];
+        const profile = data.profiles[selected];
+        const stats = profile.data;
 
-        // === Werte auslesen ===
-        const skillAverage = (member?.player_data?.experience_skill_farming ||
-          member?.player_data?.experience_skill_mining ||
-          member?.player_data?.experience_skill_combat)
-          ? "Available"
+        // === Reale SkyBlock-Daten auswerten ===
+        const skillAvg = stats.average_level ? stats.average_level.toFixed(2) : "N/A";
+        const catacombs =
+          stats.dungeons?.catacombs?.level?.level !== undefined
+            ? stats.dungeons.catacombs.level.level
+            : "N/A";
+        const slayers = stats.slayers
+          ? `${stats.slayers.revenant?.level || 0}/${stats.slayers.tarantula?.level || 0}/${stats.slayers.sven?.level || 0}/${stats.slayers.enderman?.level || 0}/${stats.slayers.blaze?.level || 0}`
           : "N/A";
-
-        const catacombs = member?.dungeons?.dungeon_types?.catacombs?.experience
-          ? `${(member.dungeons.dungeon_types.catacombs.experience / 569809640).toFixed(2)} XP`
+        const networth = stats.networth
+          ? `${(stats.networth.networth / 1e6).toFixed(1)}M (${(stats.networth.unsoulboundNetworth / 1e6).toFixed(1)}M Unsoulbound)`
           : "N/A";
-
-        const slayers = member?.slayer_bosses
-          ? Object.entries(member.slayer_bosses)
-              .map(([boss, data]) => `${boss}: ${data.levels ? Object.keys(data.levels).length : 0}`)
-              .join(" | ")
+        const level = stats.level?.level ? stats.level.level : "N/A";
+        const hotm = stats.mining?.core?.level ?? "N/A";
+        const mithril = stats.mining?.powder_mithril
+          ? `${(stats.mining.powder_mithril / 1e6).toFixed(1)}M`
           : "N/A";
+        const gemstone = stats.mining?.powder_gemstone
+          ? `${(stats.mining.powder_gemstone / 1e6).toFixed(1)}M`
+          : "N/A";
+        const minionSlots = stats.minions?.count ?? "N/A";
+        const garden = stats.garden?.level ?? "N/A";
 
-        const networth = member?.networth ?? "N/A";
-        const level = member?.leveling?.experience ?? "N/A";
-
+        // === Embed bauen ===
         const embed = new EmbedBuilder()
           .setColor("#2ECC71")
           .setTitle(`💎 SkyBlock Profile: ${profile.cute_name}`)
           .setThumbnail(`https://mc-heads.net/avatar/${mcName}`)
           .addFields(
-            { name: "🧠 Skill Average", value: skillAverage.toString(), inline: true },
+            { name: "🏷️ Rank", value: profile.rank || "N/A", inline: true },
+            { name: "🧠 Skill Average", value: skillAvg.toString(), inline: true },
             { name: "🏰 Catacombs", value: catacombs.toString(), inline: true },
-            { name: "⚔️ Slayers", value: slayers.toString(), inline: false },
+            { name: "⚔️ Slayers", value: slayers.toString(), inline: true },
             { name: "📈 Level", value: level.toString(), inline: true },
-            { name: "💰 Networth", value: networth.toString(), inline: true },
+            { name: "💰 Networth", value: networth.toString(), inline: false },
+            { name: "⛏️ HOTM", value: hotm.toString(), inline: true },
+            { name: "🪙 Mithril Powder", value: mithril.toString(), inline: true },
+            { name: "💎 Gemstone Powder", value: gemstone.toString(), inline: true },
+            { name: "📦 Minion Slots", value: minionSlots.toString(), inline: true },
+            { name: "🌱 Garden", value: garden.toString(), inline: true },
             { name: "💵 Price", value: `$${price}`, inline: true },
             { name: "👤 Listed by", value: `<@${listedBy.id}>`, inline: true }
           )
           .setFooter({ text: "Made by WymppMashkal" });
 
-        // === Dropdown "Click a stat to view it!" ===
+        // === Dropdown ===
         const statsMenu = new StringSelectMenuBuilder()
           .setCustomId("stat_select")
           .setPlaceholder("Click a stat to view it!")
