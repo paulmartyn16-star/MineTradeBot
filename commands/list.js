@@ -53,19 +53,34 @@ module.exports = {
   async execute(interaction) {
     const mcName = interaction.options.getString("minecraft_name");
     const price = interaction.options.getInteger("amount");
-    const listedBy = interaction.options.getUser("listed_by") || interaction.user;
+    const listedBy =
+      interaction.options.getUser("listed_by") || interaction.user;
 
     await interaction.deferReply();
 
     try {
-      // === SkyCrypt API aufrufen ===
-      const res = await fetch(`https://sky.shiiyu.moe/api/v2/profile/${mcName}`);
-      const data = await res.json();
+      // === SkyCrypt API (mit Debug-Logging) ===
+      const url = `https://sky.shiiyu.moe/api/v2/profile/${mcName}`;
+      console.log(`[DEBUG] Fetching SkyCrypt data for ${mcName}: ${url}`);
+
+      const res = await fetch(url);
+      console.log(`[DEBUG] Response status: ${res.status}`);
+
+      const text = await res.text();
+      console.log(`[DEBUG] Raw response (first 300 chars): ${text.slice(0, 300)}`);
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (jsonErr) {
+        console.error("[DEBUG] JSON parse error:", jsonErr);
+        throw new Error("Invalid JSON from SkyCrypt API");
+      }
 
       if (!data.profiles || Object.keys(data.profiles).length === 0)
         return interaction.editReply("⚠️ This player has no SkyBlock profiles.");
 
-      // === Profile-Auswahl vorbereiten ===
+      // === Profile-Auswahl ===
       const profileOptions = Object.entries(data.profiles).map(([key, profile]) => ({
         label: `${profile.cute_name} (${profile.current ? "Active" : "Inactive"})`,
         value: key,
@@ -117,7 +132,7 @@ module.exports = {
         const minionSlots = stats.minions?.count ?? "N/A";
         const garden = stats.garden?.level ?? "N/A";
 
-        // === Embed bauen ===
+        // === Embed ===
         const embed = new EmbedBuilder()
           .setColor("#2ECC71")
           .setTitle(`💎 SkyBlock Profile: ${profile.cute_name}`)
@@ -179,10 +194,13 @@ module.exports = {
 
       collector.on("end", (collected) => {
         if (collected.size === 0)
-          interaction.editReply({ content: "⌛ You did not select a profile in time.", components: [] });
+          interaction.editReply({
+            content: "⌛ You did not select a profile in time.",
+            components: [],
+          });
       });
     } catch (err) {
-      console.error(err);
+      console.error("[ERROR] Full Error Trace:", err);
       return interaction.editReply("❌ Error fetching SkyBlock data.");
     }
   },
