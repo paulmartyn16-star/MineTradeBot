@@ -10,7 +10,7 @@ const fetch = require("node-fetch");
 
 const cache = new Map();
 
-// ✅ 1. Autocomplete mit Mojang API
+// ✅ Mojang Autocomplete (funktioniert weltweit)
 async function fetchNameSuggestions(query) {
   if (!query || query.length < 2) return [];
   if (cache.has(query)) return cache.get(query);
@@ -19,7 +19,6 @@ async function fetchNameSuggestions(query) {
     const res = await fetch(`https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(query)}`);
     if (res.status === 204) return [];
     const data = await res.json();
-
     if (data && data.name) {
       const results = [{ name: data.name, value: data.name }];
       cache.set(query, results);
@@ -32,31 +31,38 @@ async function fetchNameSuggestions(query) {
   }
 }
 
-// ✅ 2. Echte SkyBlock-Daten von SlothPixel
+// ✅ SkyBlock Stats via SkyHelper API
 async function fetchSkyblockData(username) {
   try {
-    // UUID vom Mojang-API holen
+    // 1️⃣ UUID vom Mojang-API
     const uuidRes = await fetch(`https://api.mojang.com/users/profiles/minecraft/${username}`);
     if (!uuidRes.ok) throw new Error("Failed to fetch UUID");
     const uuidData = await uuidRes.json();
+    const uuid = uuidData.id;
 
-    // SkyBlock-Profil von SlothPixel holen
-    const sbRes = await fetch(`https://api.slothpixel.me/api/skyblock/profile/${uuidData.id}`);
-    if (!sbRes.ok) throw new Error("Failed to fetch SkyBlock data");
-    const sbData = await sbRes.json();
+    // 2️⃣ SkyBlock Stats vom SkyHelper API
+    const res = await fetch(`https://skyhelperapi.matdoes.dev/api/v1/profiles/${uuid}?key=demo`);
+    if (!res.ok) throw new Error("Failed to fetch SkyBlock data");
 
-    // Profil auswerten
-    const profile = Object.values(sbData.members || {})[0];
-    if (!profile) throw new Error("No profile data found");
+    const data = await res.json();
+    const profile = data.profiles[data.current_profile];
+    if (!profile) throw new Error("No SkyBlock profile found");
 
+    const stats = profile.data;
+
+    // 3️⃣ Daten zurückgeben
     return {
-      username: username,
-      uuid: uuidData.id,
-      skillAverage: (profile.skills?.average_skills ?? 0).toFixed(2),
-      catacombs: profile.dungeons?.catacombs?.level ?? "N/A",
-      slayers: profile.slayer_xp?.total ?? 0,
-      networth: (profile.net_worth ?? 0).toLocaleString(),
-      level: profile.level ?? "N/A",
+      username,
+      uuid,
+      skillAverage: stats.average_skill_level.toFixed(2),
+      catacombs: stats.dungeons?.catacombs?.level?.level || "N/A",
+      slayerXp:
+        stats.slayer?.zombie?.xp +
+          stats.slayer?.spider?.xp +
+          stats.slayer?.wolf?.xp +
+          stats.slayer?.enderman?.xp || 0,
+      networth: stats.networth?.networth?.toLocaleString() || "N/A",
+      level: stats.level?.level || "N/A",
     };
   } catch (err) {
     console.error("[SkyBlock Fetch Error]", err);
@@ -82,7 +88,6 @@ module.exports = {
       opt.setName("listed_by").setDescription("User who listed the account")
     ),
 
-  // ✅ Autocomplete Handler
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused();
     const choices = await fetchNameSuggestions(focused);
@@ -93,7 +98,6 @@ module.exports = {
     }
   },
 
-  // ✅ Command Execution
   async execute(interaction) {
     const mcName = interaction.options.getString("minecraft_name");
     const price = interaction.options.getInteger("amount");
@@ -106,7 +110,7 @@ module.exports = {
       return await interaction.editReply("❌ Could not fetch SkyBlock stats for that player.");
     }
 
-    // ✅ Embed mit echten Daten
+    // ✅ Embed mit echten Stats
     const embed = new EmbedBuilder()
       .setColor("#2ECC71")
       .setTitle(`💎 Account Listing: ${data.username}`)
@@ -115,7 +119,7 @@ module.exports = {
       .addFields(
         { name: "🧠 Skill Average", value: `${data.skillAverage}`, inline: true },
         { name: "🏰 Catacombs Level", value: `${data.catacombs}`, inline: true },
-        { name: "⚔️ Slayer XP", value: `${data.slayers}`, inline: true },
+        { name: "⚔️ Total Slayer XP", value: `${data.slayerXp.toLocaleString()}`, inline: true },
         { name: "💰 Networth", value: `${data.networth}`, inline: true },
         { name: "📈 Level", value: `${data.level}`, inline: true },
         { name: "💵 Price", value: `$${price}`, inline: true },
