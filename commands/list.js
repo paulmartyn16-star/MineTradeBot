@@ -1,4 +1,3 @@
-require("dotenv").config();
 const {
   SlashCommandBuilder,
   EmbedBuilder,
@@ -63,19 +62,18 @@ module.exports = {
       const uuidData = await uuidRes.json();
       const uuid = uuidData.id;
 
-      // === 2. SkyBlock-Profile von Hypixel API ===
-      const hypixelRes = await fetch(
-        `https://api.hypixel.net/skyblock/profiles?uuid=${uuid}&key=${process.env.HYPIXEL_API_KEY}`
-      );
-      const hypixelData = await hypixelRes.json();
+      // === 2. Neue SkyBlock API (matdoes.dev) ===
+      const res = await fetch(`https://skyblock.matdoes.dev/skyblock/profile/${uuid}`);
+      if (!res.ok) return interaction.editReply("⚠️ Failed to fetch SkyBlock data from API.");
 
-      if (!hypixelData.success || !hypixelData.profiles)
+      const data = await res.json();
+      if (!data.success || !data.profiles)
         return interaction.editReply("⚠️ This player has no SkyBlock profiles.");
 
-      const profiles = hypixelData.profiles;
-      const profileOptions = profiles.map((p) => ({
-        label: `${p.cute_name || "Unknown"} (${p.selected ? "Active" : "Inactive"})`,
-        value: p.profile_id,
+      const profiles = data.profiles;
+      const profileOptions = Object.keys(profiles).map((key) => ({
+        label: profiles[key].cute_name,
+        value: key,
       }));
 
       const profileMenu = new StringSelectMenuBuilder()
@@ -90,7 +88,7 @@ module.exports = {
         components: [rowProfile],
       });
 
-      // === Collector ===
+      // === Collector für Profilwahl ===
       const collector = interaction.channel.createMessageComponentCollector({
         filter: (i) => i.user.id === interaction.user.id && i.customId === "select_profile",
         time: 60000,
@@ -99,28 +97,19 @@ module.exports = {
       collector.on("collect", async (i) => {
         await i.deferUpdate();
         const selected = i.values[0];
-        const profile = profiles.find((p) => p.profile_id === selected);
-        const member = profile.members[uuid];
+        const profile = profiles[selected];
+        const stats = profile.members[uuid];
 
-        // === Beispielwerte ===
-        const skillAvg = member.player_data?.experience_skill_farming
-          ? (
-              (member.player_data.experience_skill_farming +
-                member.player_data.experience_skill_mining +
-                member.player_data.experience_skill_combat +
-                member.player_data.experience_skill_foraging +
-                member.player_data.experience_skill_fishing) /
-              5
-            ).toFixed(2)
+        // === Beispielhafte Werte ===
+        const skillAvg = stats.average_level?.toFixed(2) || "N/A";
+        const catacombs = stats.dungeons?.catacombs?.level?.level ?? "N/A";
+        const slayers = stats.slayers
+          ? `${stats.slayers.revenant?.level || 0}/${stats.slayers.tarantula?.level || 0}/${stats.slayers.sven?.level || 0}/${stats.slayers.enderman?.level || 0}/${stats.slayers.blaze?.level || 0}`
           : "N/A";
-
-        const slayerXp =
-          member.slayer_bosses?.zombie?.xp +
-            member.slayer_bosses?.spider?.xp +
-            member.slayer_bosses?.wolf?.xp || 0;
-
-        const purse = member.currencies?.coin_purse || 0;
-        const level = member.leveling?.experience || "N/A";
+        const networth = stats.networth
+          ? `${(stats.networth.networth / 1e6).toFixed(1)}M`
+          : "N/A";
+        const level = stats.level?.level ?? "N/A";
 
         const embed = new EmbedBuilder()
           .setColor("#2ECC71")
@@ -128,9 +117,10 @@ module.exports = {
           .setThumbnail(`https://mc-heads.net/avatar/${mcName}`)
           .addFields(
             { name: "🧠 Skill Average", value: `${skillAvg}`, inline: true },
-            { name: "⚔️ Slayer XP", value: `${slayerXp.toLocaleString()}`, inline: true },
-            { name: "💰 Coins in Purse", value: `${purse.toLocaleString()}`, inline: true },
-            { name: "📈 Level XP", value: `${level.toLocaleString()}`, inline: true },
+            { name: "🏰 Catacombs", value: `${catacombs}`, inline: true },
+            { name: "⚔️ Slayers", value: `${slayers}`, inline: true },
+            { name: "💰 Networth", value: `${networth}`, inline: true },
+            { name: "📈 Level", value: `${level}`, inline: true },
             { name: "💵 Price", value: `$${price}`, inline: true },
             { name: "👤 Listed by", value: `<@${listedBy.id}>`, inline: true }
           )
@@ -177,7 +167,7 @@ module.exports = {
       });
     } catch (err) {
       console.error("[ERROR]", err);
-      return interaction.editReply("❌ Error fetching Hypixel data.");
+      return interaction.editReply("❌ Error fetching SkyBlock data.");
     }
   },
 };
