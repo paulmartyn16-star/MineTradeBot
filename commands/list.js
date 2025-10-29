@@ -8,7 +8,7 @@ const {
 } = require("discord.js");
 const fetch = require("node-fetch");
 
-// === Minecraft Name Autocomplete (PlayerDB API) ===
+// === Minecraft Name Autocomplete ===
 async function fetchNameSuggestions(query) {
   try {
     if (!query || query.length < 2) return [];
@@ -53,29 +53,28 @@ module.exports = {
     const price = interaction.options.getInteger("amount");
     const listedBy = interaction.options.getUser("listed_by") || interaction.user;
 
-    // Discord sofort antworten, damit Interaction gültig bleibt
     await interaction.deferReply({ ephemeral: true });
 
     try {
-      const url = `https://sky.shiiyu.moe/api/v2/profile/${mcName}`;
+      const url = `https://sky.shiiyu.moe/api/v2/profile/${mcName}?data=true`;
       console.log(`[DEBUG] Fetching SkyCrypt data for ${mcName}: ${url}`);
-      const res = await fetch(url);
 
-      console.log(`[DEBUG] Response status: ${res.status}`);
+      const res = await fetch(url, {
+        headers: { Accept: "application/json", "User-Agent": "MineTradeBot" },
+      });
+
       const text = await res.text();
-      console.log(`[DEBUG] Raw response (first 200 chars): ${text.slice(0, 200)}`);
+      console.log(`[DEBUG] Response status: ${res.status}`);
+      console.log(`[DEBUG] First 200 chars: ${text.slice(0, 200)}`);
 
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (err) {
-        console.error("[DEBUG] JSON parse error:", err);
-        return await interaction.editReply("❌ Invalid JSON from SkyCrypt API.");
+      if (!text.startsWith("{") && !text.startsWith("[")) {
+        console.warn("[DEBUG] Non-JSON response detected, likely HTML or Cloudflare page.");
+        return await interaction.editReply("⚠️ SkyCrypt API temporarily unavailable. Please try again later.");
       }
 
-      if (!data.profiles || Object.keys(data.profiles).length === 0) {
+      const data = JSON.parse(text);
+      if (!data.profiles || Object.keys(data.profiles).length === 0)
         return await interaction.editReply("⚠️ This player has no SkyBlock profiles.");
-      }
 
       // === Profile-Auswahl ===
       const profileOptions = Object.entries(data.profiles).map(([key, profile]) => ({
@@ -95,20 +94,20 @@ module.exports = {
         components: [rowProfile],
       });
 
-      // Collector für Profilwahl
+      // Collector
       const collector = interaction.channel.createMessageComponentCollector({
         filter: (i) => i.user.id === interaction.user.id && i.customId === "select_profile",
         time: 60000,
       });
 
       collector.on("collect", async (i) => {
-        await i.deferUpdate(); // sofort bestätigen, damit Interaction gültig bleibt
+        await i.deferUpdate();
 
         const selected = i.values[0];
         const profile = data.profiles[selected];
         const stats = profile.data;
 
-        // === SkyBlock-Daten ===
+        // === Stats ===
         const skillAvg = stats.average_level ? stats.average_level.toFixed(2) : "N/A";
         const catacombs = stats.dungeons?.catacombs?.level?.level ?? "N/A";
         const slayers = stats.slayers
@@ -128,6 +127,7 @@ module.exports = {
         const minionSlots = stats.minions?.count ?? "N/A";
         const garden = stats.garden?.level ?? "N/A";
 
+        // === Embed ===
         const embed = new EmbedBuilder()
           .setColor("#2ECC71")
           .setTitle(`💎 SkyBlock Profile: ${profile.cute_name}`)
