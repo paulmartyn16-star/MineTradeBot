@@ -8,35 +8,59 @@ const {
 } = require("discord.js");
 const fetch = require("node-fetch");
 
-// 🧠 Cache, damit Render nicht zu viele Anfragen schickt
 const cache = new Map();
 
+// ✅ 1. Autocomplete mit Mojang API
 async function fetchNameSuggestions(query) {
   if (!query || query.length < 2) return [];
-
-  // Wenn im Cache vorhanden
   if (cache.has(query)) return cache.get(query);
 
   try {
-    // ✅ Offizielle Mojang API (sucht alle existierenden Accounts!)
-    const response = await fetch(`https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(query)}`);
-    if (response.status === 204) {
-      return []; // Kein Spieler gefunden
-    }
+    const res = await fetch(`https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(query)}`);
+    if (res.status === 204) return [];
+    const data = await res.json();
 
-    const data = await response.json();
-
-    // Mojang-API liefert exakte Treffer, keine Liste – wir bauen sie dynamisch
     if (data && data.name) {
       const results = [{ name: data.name, value: data.name }];
       cache.set(query, results);
       return results;
     }
-
     return [];
   } catch (err) {
     console.error("[Autocomplete Mojang Error]", err);
     return [];
+  }
+}
+
+// ✅ 2. Echte SkyBlock-Daten von SlothPixel
+async function fetchSkyblockData(username) {
+  try {
+    // UUID vom Mojang-API holen
+    const uuidRes = await fetch(`https://api.mojang.com/users/profiles/minecraft/${username}`);
+    if (!uuidRes.ok) throw new Error("Failed to fetch UUID");
+    const uuidData = await uuidRes.json();
+
+    // SkyBlock-Profil von SlothPixel holen
+    const sbRes = await fetch(`https://api.slothpixel.me/api/skyblock/profile/${uuidData.id}`);
+    if (!sbRes.ok) throw new Error("Failed to fetch SkyBlock data");
+    const sbData = await sbRes.json();
+
+    // Profil auswerten
+    const profile = Object.values(sbData.members || {})[0];
+    if (!profile) throw new Error("No profile data found");
+
+    return {
+      username: username,
+      uuid: uuidData.id,
+      skillAverage: (profile.skills?.average_skills ?? 0).toFixed(2),
+      catacombs: profile.dungeons?.catacombs?.level ?? "N/A",
+      slayers: profile.slayer_xp?.total ?? 0,
+      networth: (profile.net_worth ?? 0).toLocaleString(),
+      level: profile.level ?? "N/A",
+    };
+  } catch (err) {
+    console.error("[SkyBlock Fetch Error]", err);
+    return null;
   }
 }
 
@@ -58,10 +82,10 @@ module.exports = {
       opt.setName("listed_by").setDescription("User who listed the account")
     ),
 
+  // ✅ Autocomplete Handler
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused();
     const choices = await fetchNameSuggestions(focused);
-
     if (choices.length === 0) {
       await interaction.respond([{ name: "No Minecraft player found", value: focused }]);
     } else {
@@ -69,72 +93,58 @@ module.exports = {
     }
   },
 
+  // ✅ Command Execution
   async execute(interaction) {
     const mcName = interaction.options.getString("minecraft_name");
     const price = interaction.options.getInteger("amount");
     const listedBy = interaction.options.getUser("listed_by") || interaction.user;
 
-    await interaction.deferReply({ ephemeral: false });
+    await interaction.deferReply();
 
-    try {
-      const embed = new EmbedBuilder()
-        .setColor("#2ECC71")
-        .setTitle(`💎 Account Listing: ${mcName}`)
-        .setThumbnail(`https://mc-heads.net/avatar/${mcName}`)
-        .setDescription("Click a stat to view it!")
-        .addFields(
-          { name: "🏆 Rank", value: "[MVP+]", inline: true },
-          { name: "🧠 Skill Average", value: "55.75", inline: true },
-          { name: "🏰 Catacombs", value: "58 (2.18B XP)", inline: true },
-          { name: "⚔️ Slayers", value: "9/9/9/7/5", inline: true },
-          { name: "📈 Level", value: "446.27", inline: true },
-          { name: "💰 Networth", value: "44.7B (341.8M + 1B Coins)", inline: true },
-          { name: "🔮 Soulbound", value: "27.58B", inline: true },
-          { name: "⛏️ HOTM", value: "Heart of the Mountain: not available", inline: false },
-          { name: "💎 Powder", value: "Mithril: 4.5M | Gemstone: 14.83M | Glacite: 14.9M", inline: false },
-          { name: "💵 Price", value: `$${price}`, inline: true },
-          { name: "👤 Listed by", value: `<@${listedBy.id}>`, inline: true },
-          { name: "💳 Payment Method(s)", value: "🪙 / 💎 / ⚡ / 💰 / 🪙 / 🪙", inline: false }
-        )
-        .setFooter({ text: "Made by WymppMashkal" });
+    const data = await fetchSkyblockData(mcName);
+    if (!data) {
+      return await interaction.editReply("❌ Could not fetch SkyBlock stats for that player.");
+    }
 
-      const selectMenu = new StringSelectMenuBuilder()
+    // ✅ Embed mit echten Daten
+    const embed = new EmbedBuilder()
+      .setColor("#2ECC71")
+      .setTitle(`💎 Account Listing: ${data.username}`)
+      .setThumbnail(`https://mc-heads.net/avatar/${data.username}`)
+      .setDescription("Click a stat to view it!")
+      .addFields(
+        { name: "🧠 Skill Average", value: `${data.skillAverage}`, inline: true },
+        { name: "🏰 Catacombs Level", value: `${data.catacombs}`, inline: true },
+        { name: "⚔️ Slayer XP", value: `${data.slayers}`, inline: true },
+        { name: "💰 Networth", value: `${data.networth}`, inline: true },
+        { name: "📈 Level", value: `${data.level}`, inline: true },
+        { name: "💵 Price", value: `$${price}`, inline: true },
+        { name: "👤 Listed by", value: `<@${listedBy.id}>`, inline: true }
+      )
+      .setFooter({ text: "Made by WymppMashkal" });
+
+    const rowSelect = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
         .setCustomId("stat_menu")
         .setPlaceholder("Click a stat to view it!")
         .addOptions([
           { label: "Catacombs", value: "catacombs", emoji: "🏰" },
           { label: "Slayers", value: "slayers", emoji: "⚔️" },
           { label: "Skills", value: "skills", emoji: "🧠" },
-          { label: "Unsoulbound Networth", value: "unsoulbound", emoji: "💰" },
-          { label: "Soulbound Networth", value: "soulbound", emoji: "🔮" },
-          { label: "Mining", value: "mining", emoji: "⛏️" },
-          { label: "Farming", value: "farming", emoji: "🌾" },
-          { label: "Kuudra", value: "kuudra", emoji: "🔥" },
-          { label: "Minion Slots", value: "minions", emoji: "📦" },
-          { label: "Garden", value: "garden", emoji: "🌻" },
-        ]);
+          { label: "Networth", value: "networth", emoji: "💰" },
+          { label: "Level", value: "level", emoji: "📈" },
+        ])
+    );
 
-      const rowSelect = new ActionRowBuilder().addComponents(selectMenu);
+    const buttons = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("buy").setLabel("Buy").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("update_stats").setLabel("Update Stats").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("unlist").setLabel("Unlist").setStyle(ButtonStyle.Danger)
+    );
 
-      const buttons1 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("toggle_ping").setLabel("Toggle Ping").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId("listing_owner").setLabel("Listing Owner").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("extra_info").setLabel("Extra Information").setStyle(ButtonStyle.Secondary)
-      );
-
-      const buttons2 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("buy").setLabel("Buy").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId("update_stats").setLabel("Update Stats").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("unlist").setLabel("Unlist").setStyle(ButtonStyle.Danger)
-      );
-
-      await interaction.editReply({
-        embeds: [embed],
-        components: [rowSelect, buttons1, buttons2],
-      });
-    } catch (err) {
-      console.error("[ERROR in /list]", err);
-      await interaction.editReply("❌ Something went wrong while creating the listing.");
-    }
+    await interaction.editReply({
+      embeds: [embed],
+      components: [rowSelect, buttons],
+    });
   },
 };
