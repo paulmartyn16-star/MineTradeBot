@@ -6,38 +6,33 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
-const fetch = require("node-fetch");
 
-// 🧠 Autocomplete — echte Namenssuche über Mojang-API-Cache
+// 🧱 Eingebaute Minecraft-Namenliste (Demo – kann später erweitert werden)
+const nameList = [
+  "Technoblade",
+  "TechnoNeko",
+  "TechnoPig",
+  "PommesMen",
+  "PommesMann",
+  "Refraction",
+  "Hypixel",
+  "Notch",
+  "Dream",
+  "GeorgeNotFound",
+  "TommyInnit",
+  "Tubbo",
+  "Philza",
+  "WymppMashkal",
+];
+
+// ✅ Lokales Autocomplete (keine API)
 async function fetchNameSuggestions(query) {
   if (!query || query.length < 2) return [];
-
-  try {
-    // API von PlayerDB (funktioniert auf Render, braucht exakten Header)
-    const res = await fetch(`https://playerdb.co/api/search/minecraft/${encodeURIComponent(query)}`, {
-      method: "GET",
-      headers: {
-        "Accept": "application/json",
-        "User-Agent": "MineTradeBot/1.0 (Render Autocomplete Fix)"
-      }
-    });
-
-    const data = await res.json();
-
-    if (!data.success || !data.data?.players?.length) {
-      return [];
-    }
-
-    // Nur erste 25 Spieler anzeigen (Discord Limit)
-    return data.data.players.slice(0, 25).map((p) => ({
-      name: p.username,
-      value: p.username,
-    }));
-
-  } catch (err) {
-    console.error("[Autocomplete Error]", err);
-    return [];
-  }
+  const filtered = nameList
+    .filter((n) => n.toLowerCase().startsWith(query.toLowerCase()))
+    .slice(0, 25)
+    .map((n) => ({ name: n, value: n }));
+  return filtered;
 }
 
 module.exports = {
@@ -58,18 +53,18 @@ module.exports = {
       opt.setName("listed_by").setDescription("User who listed the account")
     ),
 
-  // ✅ Autocomplete Handler
+  // ✅ Autocomplete Event
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused();
     const choices = await fetchNameSuggestions(focused);
     if (choices.length === 0) {
-      await interaction.respond([{ name: "No Minecraft players found", value: focused }]);
+      await interaction.respond([{ name: "No names found", value: focused }]);
     } else {
       await interaction.respond(choices);
     }
   },
 
-  // ✅ Command Execution
+  // ✅ Command-Ausführung
   async execute(interaction) {
     const mcName = interaction.options.getString("minecraft_name");
     const price = interaction.options.getInteger("amount");
@@ -130,7 +125,6 @@ module.exports = {
       );
 
       await interaction.editReply({
-        content: "",
         embeds: [embed],
         components: [rowSelect, buttons1, buttons2],
       });
