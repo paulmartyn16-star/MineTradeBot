@@ -8,14 +8,17 @@ const {
 } = require("discord.js");
 const fetch = require("node-fetch");
 
-// === Hilfsfunktion: Minecraft-Name-Autocomplete ===
+// === Richtige Minecraft-Name-Autocomplete (PlayerDB) ===
 async function fetchNameSuggestions(query) {
   try {
     if (!query || query.length < 2) return [];
-    const res = await fetch(`https://api.mojang.com/users/profiles/minecraft/${query}`);
-    if (res.status === 204) return [];
+    const res = await fetch(`https://playerdb.co/api/search/minecraft/${query}`);
     const data = await res.json();
-    return [{ name: data.name, value: data.name }];
+    if (!data.success || !data.data || !data.data.players) return [];
+    return data.data.players.slice(0, 25).map((p) => ({
+      name: p.username,
+      value: p.username,
+    }));
   } catch {
     return [];
   }
@@ -56,7 +59,7 @@ module.exports = {
     await interaction.deferReply();
 
     try {
-      // 🟢 Mojang-UUID abrufen
+      // 🟢 UUID abrufen
       const uuidRes = await fetch(
         `https://api.mojang.com/users/profiles/minecraft/${mcName}`
       );
@@ -76,7 +79,7 @@ module.exports = {
           "⚠️ Could not fetch SkyBlock data. Maybe profile is private."
         );
 
-      // Beispielwerte (Platzhalter bis echte Stats folgen)
+      // Dummywerte (später dynamisch)
       const rank = "[MVP+]";
       const skillAverage = "55.75";
       const catacombs = "58 (2.188 XP)";
@@ -89,23 +92,15 @@ module.exports = {
       const gemstone = "14.83M";
       const glacite = "14.9M";
 
-      // 🟡 Embed exakt wie auf dem Screenshot
+      // === Embed ===
       const embed = new EmbedBuilder()
         .setColor("#2ECC71")
         .setTitle("Account Information")
         .setThumbnail(`https://mc-heads.net/avatar/${mcName}`)
         .addFields(
           { name: "Rank", value: rank, inline: false },
-          {
-            name: "Skill Average",
-            value: skillAverage,
-            inline: true,
-          },
-          {
-            name: "Catacombs",
-            value: catacombs,
-            inline: true,
-          },
+          { name: "Skill Average", value: skillAverage, inline: true },
+          { name: "Catacombs", value: catacombs, inline: true },
           { name: "Slayers", value: slayers, inline: true },
           { name: "Level", value: level, inline: true },
           {
@@ -129,7 +124,7 @@ module.exports = {
           text: "Made by noemt | https://noemt.dev",
         });
 
-      // 🟣 Dropdown (2 Seiten mit je 5 Optionen)
+      // Dropdowns
       const select1 = new StringSelectMenuBuilder()
         .setCustomId("stats_page1")
         .setPlaceholder("Click a stat to view it!")
@@ -155,7 +150,7 @@ module.exports = {
       const rowSelect1 = new ActionRowBuilder().addComponents(select1);
       const rowSelect2 = new ActionRowBuilder().addComponents(select2);
 
-      // 🟢 Buttons unten
+      // Buttons
       const buttons1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("toggle_ping")
