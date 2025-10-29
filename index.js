@@ -275,22 +275,21 @@ client.once("ready", () => {
 // === SLASH COMMAND EXECUTION ===
 client.on("interactionCreate", async (interaction) => {
   try {
-    // 🔹 Autocomplete (z. B. für /list minecraft_name)
+    // ✅ Autocomplete Event
     if (interaction.isAutocomplete()) {
-      const command = interaction.client.commands.get(interaction.commandName);
-      if (!command || !command.autocomplete) return;
-      await command.autocomplete(interaction);
+      const command = client.commands.get(interaction.commandName);
+      if (command?.autocomplete) await command.autocomplete(interaction);
       return;
     }
 
-    // 🔹 Slash Command ausführen
+    // ✅ Slash Commands
     if (!interaction.isChatInputCommand()) return;
-    const command = interaction.client.commands.get(interaction.commandName);
+    const command = client.commands.get(interaction.commandName);
     if (!command) return;
 
     await command.execute(interaction);
-  } catch (err) {
-    console.error("Interaction Error:", err);
+  } catch (error) {
+    console.error(error);
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp({ content: "❌ Error executing command.", ephemeral: true });
     } else {
@@ -298,6 +297,7 @@ client.on("interactionCreate", async (interaction) => {
     }
   }
 });
+
 
 
 // === Support Ticket System ===
