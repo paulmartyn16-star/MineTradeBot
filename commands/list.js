@@ -8,7 +8,6 @@ const {
 } = require("discord.js");
 const fetch = require("node-fetch");
 
-// === Minecraft Name Autocomplete (PlayerDB API) ===
 async function fetchNameSuggestions(query) {
   try {
     if (!query || query.length < 2) return [];
@@ -42,43 +41,40 @@ module.exports = {
       opt.setName("listed_by").setDescription("User who listed the account")
     ),
 
-  // === Autocomplete Handler ===
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused();
     const choices = await fetchNameSuggestions(focused);
     await interaction.respond(choices);
   },
 
-  // === Command Execution ===
   async execute(interaction) {
     const mcName = interaction.options.getString("minecraft_name");
     const price = interaction.options.getInteger("amount");
-    const listedBy =
-      interaction.options.getUser("listed_by") || interaction.user;
-
-    await interaction.deferReply();
+    const listedBy = interaction.options.getUser("listed_by") || interaction.user;
 
     try {
-      // === SkyCrypt API (mit Debug-Logging) ===
+      // Wir senden sofort eine Antwort, damit Discord die Interaction gültig hält
+      await interaction.reply({ content: `⏳ Fetching SkyBlock data for **${mcName}**...`, ephemeral: true });
+
       const url = `https://sky.shiiyu.moe/api/v2/profile/${mcName}`;
       console.log(`[DEBUG] Fetching SkyCrypt data for ${mcName}: ${url}`);
-
       const res = await fetch(url);
-      console.log(`[DEBUG] Response status: ${res.status}`);
 
+      console.log(`[DEBUG] Response status: ${res.status}`);
       const text = await res.text();
       console.log(`[DEBUG] Raw response (first 300 chars): ${text.slice(0, 300)}`);
 
       let data;
       try {
         data = JSON.parse(text);
-      } catch (jsonErr) {
-        console.error("[DEBUG] JSON parse error:", jsonErr);
-        throw new Error("Invalid JSON from SkyCrypt API");
+      } catch (err) {
+        console.error("[DEBUG] JSON parse error:", err);
+        return interaction.followUp({ content: "❌ Invalid JSON from SkyCrypt API.", ephemeral: true });
       }
 
-      if (!data.profiles || Object.keys(data.profiles).length === 0)
-        return interaction.editReply("⚠️ This player has no SkyBlock profiles.");
+      if (!data.profiles || Object.keys(data.profiles).length === 0) {
+        return interaction.followUp({ content: "⚠️ This player has no SkyBlock profiles.", ephemeral: true });
+      }
 
       // === Profile-Auswahl ===
       const profileOptions = Object.entries(data.profiles).map(([key, profile]) => ({
@@ -93,12 +89,13 @@ module.exports = {
 
       const rowProfile = new ActionRowBuilder().addComponents(profileMenu);
 
-      await interaction.editReply({
+      await interaction.followUp({
         content: `🗂️ **${mcName}** has multiple SkyBlock profiles. Please select one:`,
         components: [rowProfile],
+        ephemeral: true,
       });
 
-      // === Collector für Profilwahl ===
+      // Collector
       const collector = interaction.channel.createMessageComponentCollector({
         filter: (i) => i.user.id === interaction.user.id && i.customId === "select_profile",
         time: 60000,
@@ -109,19 +106,16 @@ module.exports = {
         const profile = data.profiles[selected];
         const stats = profile.data;
 
-        // === Reale SkyBlock-Daten auswerten ===
+        // === Stats extrahieren ===
         const skillAvg = stats.average_level ? stats.average_level.toFixed(2) : "N/A";
-        const catacombs =
-          stats.dungeons?.catacombs?.level?.level !== undefined
-            ? stats.dungeons.catacombs.level.level
-            : "N/A";
+        const catacombs = stats.dungeons?.catacombs?.level?.level ?? "N/A";
         const slayers = stats.slayers
           ? `${stats.slayers.revenant?.level || 0}/${stats.slayers.tarantula?.level || 0}/${stats.slayers.sven?.level || 0}/${stats.slayers.enderman?.level || 0}/${stats.slayers.blaze?.level || 0}`
           : "N/A";
         const networth = stats.networth
           ? `${(stats.networth.networth / 1e6).toFixed(1)}M (${(stats.networth.unsoulboundNetworth / 1e6).toFixed(1)}M Unsoulbound)`
           : "N/A";
-        const level = stats.level?.level ? stats.level.level : "N/A";
+        const level = stats.level?.level ?? "N/A";
         const hotm = stats.mining?.core?.level ?? "N/A";
         const mithril = stats.mining?.powder_mithril
           ? `${(stats.mining.powder_mithril / 1e6).toFixed(1)}M`
@@ -132,7 +126,6 @@ module.exports = {
         const minionSlots = stats.minions?.count ?? "N/A";
         const garden = stats.garden?.level ?? "N/A";
 
-        // === Embed ===
         const embed = new EmbedBuilder()
           .setColor("#2ECC71")
           .setTitle(`💎 SkyBlock Profile: ${profile.cute_name}`)
@@ -154,7 +147,6 @@ module.exports = {
           )
           .setFooter({ text: "Made by WymppMashkal" });
 
-        // === Dropdown ===
         const statsMenu = new StringSelectMenuBuilder()
           .setCustomId("stat_select")
           .setPlaceholder("Click a stat to view it!")
@@ -192,16 +184,15 @@ module.exports = {
         });
       });
 
-      collector.on("end", (collected) => {
-        if (collected.size === 0)
-          interaction.editReply({
-            content: "⌛ You did not select a profile in time.",
-            components: [],
-          });
+      collector.on("end", () => {
+        interaction.followUp({
+          content: "⌛ You did not select a profile in time.",
+          ephemeral: true,
+        });
       });
     } catch (err) {
       console.error("[ERROR] Full Error Trace:", err);
-      return interaction.editReply("❌ Error fetching SkyBlock data.");
+      return interaction.followUp({ content: "❌ Error fetching SkyBlock data.", ephemeral: true });
     }
   },
 };
