@@ -8,6 +8,7 @@ const {
 } = require("discord.js");
 const fetch = require("node-fetch");
 
+// === Minecraft Name Autocomplete (PlayerDB API) ===
 async function fetchNameSuggestions(query) {
   try {
     if (!query || query.length < 2) return [];
@@ -52,28 +53,28 @@ module.exports = {
     const price = interaction.options.getInteger("amount");
     const listedBy = interaction.options.getUser("listed_by") || interaction.user;
 
-    try {
-      // Wir senden sofort eine Antwort, damit Discord die Interaction gültig hält
-      await interaction.reply({ content: `⏳ Fetching SkyBlock data for **${mcName}**...`, ephemeral: true });
+    // Discord sofort antworten, damit Interaction gültig bleibt
+    await interaction.deferReply({ ephemeral: true });
 
+    try {
       const url = `https://sky.shiiyu.moe/api/v2/profile/${mcName}`;
       console.log(`[DEBUG] Fetching SkyCrypt data for ${mcName}: ${url}`);
       const res = await fetch(url);
 
       console.log(`[DEBUG] Response status: ${res.status}`);
       const text = await res.text();
-      console.log(`[DEBUG] Raw response (first 300 chars): ${text.slice(0, 300)}`);
+      console.log(`[DEBUG] Raw response (first 200 chars): ${text.slice(0, 200)}`);
 
       let data;
       try {
         data = JSON.parse(text);
       } catch (err) {
         console.error("[DEBUG] JSON parse error:", err);
-        return interaction.followUp({ content: "❌ Invalid JSON from SkyCrypt API.", ephemeral: true });
+        return await interaction.editReply("❌ Invalid JSON from SkyCrypt API.");
       }
 
       if (!data.profiles || Object.keys(data.profiles).length === 0) {
-        return interaction.followUp({ content: "⚠️ This player has no SkyBlock profiles.", ephemeral: true });
+        return await interaction.editReply("⚠️ This player has no SkyBlock profiles.");
       }
 
       // === Profile-Auswahl ===
@@ -89,24 +90,25 @@ module.exports = {
 
       const rowProfile = new ActionRowBuilder().addComponents(profileMenu);
 
-      await interaction.followUp({
+      await interaction.editReply({
         content: `🗂️ **${mcName}** has multiple SkyBlock profiles. Please select one:`,
         components: [rowProfile],
-        ephemeral: true,
       });
 
-      // Collector
+      // Collector für Profilwahl
       const collector = interaction.channel.createMessageComponentCollector({
         filter: (i) => i.user.id === interaction.user.id && i.customId === "select_profile",
         time: 60000,
       });
 
       collector.on("collect", async (i) => {
+        await i.deferUpdate(); // sofort bestätigen, damit Interaction gültig bleibt
+
         const selected = i.values[0];
         const profile = data.profiles[selected];
         const stats = profile.data;
 
-        // === Stats extrahieren ===
+        // === SkyBlock-Daten ===
         const skillAvg = stats.average_level ? stats.average_level.toFixed(2) : "N/A";
         const catacombs = stats.dungeons?.catacombs?.level?.level ?? "N/A";
         const slayers = stats.slayers
@@ -147,6 +149,7 @@ module.exports = {
           )
           .setFooter({ text: "Made by WymppMashkal" });
 
+        // === Dropdown und Buttons ===
         const statsMenu = new StringSelectMenuBuilder()
           .setCustomId("stat_select")
           .setPlaceholder("Click a stat to view it!")
@@ -177,22 +180,23 @@ module.exports = {
           new ButtonBuilder().setCustomId("unlist").setLabel("Unlist").setStyle(ButtonStyle.Danger)
         );
 
-        await i.update({
+        await interaction.editReply({
           content: "",
           embeds: [embed],
           components: [rowSelect, buttons1, buttons2],
         });
       });
 
-      collector.on("end", () => {
-        interaction.followUp({
-          content: "⌛ You did not select a profile in time.",
-          ephemeral: true,
-        });
+      collector.on("end", (collected) => {
+        if (collected.size === 0)
+          interaction.editReply({
+            content: "⌛ You did not select a profile in time.",
+            components: [],
+          });
       });
     } catch (err) {
-      console.error("[ERROR] Full Error Trace:", err);
-      return interaction.followUp({ content: "❌ Error fetching SkyBlock data.", ephemeral: true });
+      console.error("[ERROR] Full Trace:", err);
+      return await interaction.editReply("❌ Error fetching SkyBlock data.");
     }
   },
 };
