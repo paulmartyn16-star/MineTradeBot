@@ -56,146 +56,85 @@ module.exports = {
     await interaction.deferReply({ ephemeral: true });
 
     try {
-      const url = `https://sky.shiiyu.moe/api/v2/profile/${mcName}?data=true`;
-      console.log(`[DEBUG] Fetching SkyCrypt data for ${mcName}: ${url}`);
+      const url = `https://api.slothpixel.me/api/skyblock/profile/${mcName}`;
+      console.log(`[DEBUG] Fetching data for ${mcName}: ${url}`);
 
       const res = await fetch(url, {
         headers: { Accept: "application/json", "User-Agent": "MineTradeBot" },
       });
 
-      const text = await res.text();
-      console.log(`[DEBUG] Response status: ${res.status}`);
-      console.log(`[DEBUG] First 200 chars: ${text.slice(0, 200)}`);
-
-      if (!text.startsWith("{") && !text.startsWith("[")) {
-        console.warn("[DEBUG] Non-JSON response detected, likely HTML or Cloudflare page.");
-        return await interaction.editReply("⚠️ SkyCrypt API temporarily unavailable. Please try again later.");
+      if (!res.ok) {
+        console.log(`[DEBUG] API returned status ${res.status}`);
+        return await interaction.editReply("⚠️ Failed to fetch SkyBlock data from API.");
       }
 
-      const data = JSON.parse(text);
-      if (!data.profiles || Object.keys(data.profiles).length === 0)
-        return await interaction.editReply("⚠️ This player has no SkyBlock profiles.");
+      const data = await res.json();
+      if (!data.members) {
+        return await interaction.editReply("⚠️ This player has no SkyBlock data.");
+      }
 
-      // === Profile-Auswahl ===
-      const profileOptions = Object.entries(data.profiles).map(([key, profile]) => ({
-        label: `${profile.cute_name} (${profile.current ? "Active" : "Inactive"})`,
-        value: key,
-      }));
+      const profileData = Object.values(data.members)[0];
+      const stats = profileData.player_data || {};
+      const skills = stats.skills || {};
 
-      const profileMenu = new StringSelectMenuBuilder()
-        .setCustomId("select_profile")
-        .setPlaceholder("Select a SkyBlock profile")
-        .addOptions(profileOptions.slice(0, 25));
+      // === Beispielhafte Stats ===
+      const skillAvg = skills.average_level?.toFixed(2) || "N/A";
+      const catacombs = profileData.dungeons?.catacombs?.level || "N/A";
+      const slayers = profileData.slayer
+        ? `${profileData.slayer.zombie?.level || 0}/${profileData.slayer.spider?.level || 0}/${profileData.slayer.wolf?.level || 0}/${profileData.slayer.enderman?.level || 0}/${profileData.slayer.blaze?.level || 0}`
+        : "N/A";
+      const networth = (profileData.networth?.networth || 0) / 1e6;
+      const level = stats.level || "N/A";
+      const minionSlots = profileData.minions?.length || "N/A";
 
-      const rowProfile = new ActionRowBuilder().addComponents(profileMenu);
+      const embed = new EmbedBuilder()
+        .setColor("#2ECC71")
+        .setTitle(`💎 SkyBlock Profile: ${mcName}`)
+        .setThumbnail(`https://mc-heads.net/avatar/${mcName}`)
+        .addFields(
+          { name: "🧠 Skill Average", value: `${skillAvg}`, inline: true },
+          { name: "🏰 Catacombs", value: `${catacombs}`, inline: true },
+          { name: "⚔️ Slayers", value: `${slayers}`, inline: true },
+          { name: "💰 Networth", value: `${networth.toFixed(2)}M`, inline: true },
+          { name: "📈 Level", value: `${level}`, inline: true },
+          { name: "📦 Minion Slots", value: `${minionSlots}`, inline: true },
+          { name: "💵 Price", value: `$${price}`, inline: true },
+          { name: "👤 Listed by", value: `<@${listedBy.id}>`, inline: true }
+        )
+        .setFooter({ text: "Made by WymppMashkal" });
+
+      const statsMenu = new StringSelectMenuBuilder()
+        .setCustomId("stat_select")
+        .setPlaceholder("Click a stat to view it!")
+        .addOptions([
+          { label: "Catacombs", value: "catacombs", emoji: "🧱" },
+          { label: "Slayers", value: "slayers", emoji: "⚔️" },
+          { label: "Skills", value: "skills", emoji: "🌿" },
+          { label: "Networth", value: "networth", emoji: "💰" },
+          { label: "Minion Slots", value: "minions", emoji: "📦" },
+        ]);
+
+      const rowSelect = new ActionRowBuilder().addComponents(statsMenu);
+
+      const buttons1 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("toggle_ping").setLabel("Toggle Ping").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("listing_owner").setLabel("Listing Owner").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("extra_info").setLabel("Extra Information").setStyle(ButtonStyle.Secondary)
+      );
+
+      const buttons2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("buy").setLabel("Buy").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId("update_stats").setLabel("Update Stats").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("unlist").setLabel("Unlist").setStyle(ButtonStyle.Danger)
+      );
 
       await interaction.editReply({
-        content: `🗂️ **${mcName}** has multiple SkyBlock profiles. Please select one:`,
-        components: [rowProfile],
-      });
-
-      // Collector
-      const collector = interaction.channel.createMessageComponentCollector({
-        filter: (i) => i.user.id === interaction.user.id && i.customId === "select_profile",
-        time: 60000,
-      });
-
-      collector.on("collect", async (i) => {
-        await i.deferUpdate();
-
-        const selected = i.values[0];
-        const profile = data.profiles[selected];
-        const stats = profile.data;
-
-        // === Stats ===
-        const skillAvg = stats.average_level ? stats.average_level.toFixed(2) : "N/A";
-        const catacombs = stats.dungeons?.catacombs?.level?.level ?? "N/A";
-        const slayers = stats.slayers
-          ? `${stats.slayers.revenant?.level || 0}/${stats.slayers.tarantula?.level || 0}/${stats.slayers.sven?.level || 0}/${stats.slayers.enderman?.level || 0}/${stats.slayers.blaze?.level || 0}`
-          : "N/A";
-        const networth = stats.networth
-          ? `${(stats.networth.networth / 1e6).toFixed(1)}M (${(stats.networth.unsoulboundNetworth / 1e6).toFixed(1)}M Unsoulbound)`
-          : "N/A";
-        const level = stats.level?.level ?? "N/A";
-        const hotm = stats.mining?.core?.level ?? "N/A";
-        const mithril = stats.mining?.powder_mithril
-          ? `${(stats.mining.powder_mithril / 1e6).toFixed(1)}M`
-          : "N/A";
-        const gemstone = stats.mining?.powder_gemstone
-          ? `${(stats.mining.powder_gemstone / 1e6).toFixed(1)}M`
-          : "N/A";
-        const minionSlots = stats.minions?.count ?? "N/A";
-        const garden = stats.garden?.level ?? "N/A";
-
-        // === Embed ===
-        const embed = new EmbedBuilder()
-          .setColor("#2ECC71")
-          .setTitle(`💎 SkyBlock Profile: ${profile.cute_name}`)
-          .setThumbnail(`https://mc-heads.net/avatar/${mcName}`)
-          .addFields(
-            { name: "🏷️ Rank", value: profile.rank || "N/A", inline: true },
-            { name: "🧠 Skill Average", value: skillAvg.toString(), inline: true },
-            { name: "🏰 Catacombs", value: catacombs.toString(), inline: true },
-            { name: "⚔️ Slayers", value: slayers.toString(), inline: true },
-            { name: "📈 Level", value: level.toString(), inline: true },
-            { name: "💰 Networth", value: networth.toString(), inline: false },
-            { name: "⛏️ HOTM", value: hotm.toString(), inline: true },
-            { name: "🪙 Mithril Powder", value: mithril.toString(), inline: true },
-            { name: "💎 Gemstone Powder", value: gemstone.toString(), inline: true },
-            { name: "📦 Minion Slots", value: minionSlots.toString(), inline: true },
-            { name: "🌱 Garden", value: garden.toString(), inline: true },
-            { name: "💵 Price", value: `$${price}`, inline: true },
-            { name: "👤 Listed by", value: `<@${listedBy.id}>`, inline: true }
-          )
-          .setFooter({ text: "Made by WymppMashkal" });
-
-        // === Dropdown und Buttons ===
-        const statsMenu = new StringSelectMenuBuilder()
-          .setCustomId("stat_select")
-          .setPlaceholder("Click a stat to view it!")
-          .addOptions([
-            { label: "Catacombs", value: "catacombs", emoji: "🧱" },
-            { label: "Slayers", value: "slayers", emoji: "⚔️" },
-            { label: "Skills", value: "skills", emoji: "🌿" },
-            { label: "Unsoulbound Networth", value: "unsoulbound", emoji: "📦" },
-            { label: "Soulbound Networth", value: "soulbound", emoji: "💼" },
-            { label: "Mining", value: "mining", emoji: "⛏️" },
-            { label: "Farming", value: "farming", emoji: "🌾" },
-            { label: "Kuudra", value: "kuudra", emoji: "🔥" },
-            { label: "Minion Slots", value: "minions", emoji: "📦" },
-            { label: "Garden", value: "garden", emoji: "🌱" },
-          ]);
-
-        const rowSelect = new ActionRowBuilder().addComponents(statsMenu);
-
-        const buttons1 = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId("toggle_ping").setLabel("Toggle Ping").setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder().setCustomId("listing_owner").setLabel("Listing Owner").setStyle(ButtonStyle.Primary),
-          new ButtonBuilder().setCustomId("extra_info").setLabel("Extra Information").setStyle(ButtonStyle.Secondary)
-        );
-
-        const buttons2 = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId("buy").setLabel("Buy").setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId("update_stats").setLabel("Update Stats").setStyle(ButtonStyle.Primary),
-          new ButtonBuilder().setCustomId("unlist").setLabel("Unlist").setStyle(ButtonStyle.Danger)
-        );
-
-        await interaction.editReply({
-          content: "",
-          embeds: [embed],
-          components: [rowSelect, buttons1, buttons2],
-        });
-      });
-
-      collector.on("end", (collected) => {
-        if (collected.size === 0)
-          interaction.editReply({
-            content: "⌛ You did not select a profile in time.",
-            components: [],
-          });
+        content: "",
+        embeds: [embed],
+        components: [rowSelect, buttons1, buttons2],
       });
     } catch (err) {
-      console.error("[ERROR] Full Trace:", err);
+      console.error("[ERROR]", err);
       return await interaction.editReply("❌ Error fetching SkyBlock data.");
     }
   },
