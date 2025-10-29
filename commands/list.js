@@ -8,7 +8,7 @@ const {
 } = require("discord.js");
 const fetch = require("node-fetch");
 
-// === Richtige Minecraft-Name-Autocomplete (PlayerDB) ===
+// === Minecraft Name Autocomplete (PlayerDB API) ===
 async function fetchNameSuggestions(query) {
   try {
     if (!query || query.length < 2) return [];
@@ -79,7 +79,7 @@ module.exports = {
           "⚠️ Could not fetch SkyBlock data. Maybe profile is private."
         );
 
-      // Dummywerte (später dynamisch)
+      // Dummywerte (Platzhalter bis echte Stats folgen)
       const rank = "[MVP+]";
       const skillAverage = "55.75";
       const catacombs = "58 (2.188 XP)";
@@ -121,25 +121,19 @@ module.exports = {
           }
         )
         .setFooter({
-          text: "Made by noemt | https://noemt.dev",
+          text: "Made by WymppMashkal",
         });
 
-      // Dropdowns
-      const select1 = new StringSelectMenuBuilder()
-        .setCustomId("stats_page1")
+      // === EINZIGER Dropdown mit allen 10 Stats ===
+      const statsMenu = new StringSelectMenuBuilder()
+        .setCustomId("stat_select")
         .setPlaceholder("Click a stat to view it!")
         .addOptions([
           { label: "Catacombs", value: "catacombs", emoji: "🧱" },
           { label: "Slayers", value: "slayers", emoji: "⚔️" },
-          { label: "Skills", value: "🌿" },
+          { label: "Skills", value: "skills", emoji: "🌿" },
           { label: "Unsoulbound Networth", value: "unsoulbound", emoji: "📦" },
           { label: "Soulbound Networth", value: "soulbound", emoji: "💼" },
-        ]);
-
-      const select2 = new StringSelectMenuBuilder()
-        .setCustomId("stats_page2")
-        .setPlaceholder("More stats ↓")
-        .addOptions([
           { label: "Mining", value: "mining", emoji: "⛏️" },
           { label: "Farming", value: "farming", emoji: "🌾" },
           { label: "Kuudra", value: "kuudra", emoji: "🔥" },
@@ -147,10 +141,9 @@ module.exports = {
           { label: "Garden", value: "garden", emoji: "🌱" },
         ]);
 
-      const rowSelect1 = new ActionRowBuilder().addComponents(select1);
-      const rowSelect2 = new ActionRowBuilder().addComponents(select2);
+      const rowSelect = new ActionRowBuilder().addComponents(statsMenu);
 
-      // Buttons
+      // === Buttons ===
       const buttons1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("toggle_ping")
@@ -183,7 +176,7 @@ module.exports = {
 
       await interaction.editReply({
         embeds: [embed],
-        components: [rowSelect1, rowSelect2, buttons1, buttons2],
+        components: [rowSelect, buttons1, buttons2],
       });
     } catch (err) {
       console.error(err);
