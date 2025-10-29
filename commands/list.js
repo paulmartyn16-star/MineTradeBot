@@ -8,18 +8,23 @@ const {
 } = require("discord.js");
 const fetch = require("node-fetch");
 
-// 🔍 Autocomplete-Funktion für Minecraft-Namen
+// Neue API – stabiler als PlayerDB
 async function fetchNameSuggestions(query) {
   if (!query || query.length < 2) return [];
   try {
-    const res = await fetch(`https://playerdb.co/api/search/minecraft/${query}`);
+    const res = await fetch(`https://api.ashcon.app/mojang/v2/users/${encodeURIComponent(query)}`);
+    if (!res.ok) return [];
     const data = await res.json();
-    if (!data.success || !data.data?.players) return [];
-    return data.data.players.slice(0, 25).map((p) => ({
-      name: p.username,
-      value: p.username,
-    }));
-  } catch {
+
+    // Wenn nur 1 Ergebnis zurückkommt → gib diesen Namen zurück
+    if (data.username) {
+      return [{ name: data.username, value: data.username }];
+    }
+
+    // Wenn kein Treffer
+    return [];
+  } catch (err) {
+    console.error("[Autocomplete Error]", err);
     return [];
   }
 }
@@ -42,14 +47,18 @@ module.exports = {
       opt.setName("listed_by").setDescription("User who listed the account")
     ),
 
-  // 🔹 Autocomplete Listener
+  // Autocomplete
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused();
     const choices = await fetchNameSuggestions(focused);
-    await interaction.respond(choices);
+    if (choices.length === 0) {
+      await interaction.respond([{ name: "No matching names found", value: focused }]);
+    } else {
+      await interaction.respond(choices);
+    }
   },
 
-  // 🔹 Haupt-Command
+  // Hauptausführung
   async execute(interaction) {
     const mcName = interaction.options.getString("minecraft_name");
     const price = interaction.options.getInteger("amount");
@@ -58,7 +67,6 @@ module.exports = {
     await interaction.deferReply({ ephemeral: false });
 
     try {
-      // 🎨 Embed-Layout (kein echter API-Call)
       const embed = new EmbedBuilder()
         .setColor("#2ECC71")
         .setTitle(`💎 Account Listing: ${mcName}`)
@@ -75,7 +83,6 @@ module.exports = {
         )
         .setFooter({ text: "Made by WymppMashkal" });
 
-      // 📊 Dropdown-Menü (alle 10 Stats sichtbar)
       const selectMenu = new StringSelectMenuBuilder()
         .setCustomId("stat_menu")
         .setPlaceholder("Click a stat to view it!")
@@ -94,7 +101,6 @@ module.exports = {
 
       const rowSelect = new ActionRowBuilder().addComponents(selectMenu);
 
-      // 🔘 Button-Reihen
       const buttons1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("toggle_ping").setLabel("Toggle Ping").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId("listing_owner").setLabel("Listing Owner").setStyle(ButtonStyle.Primary),
@@ -107,7 +113,6 @@ module.exports = {
         new ButtonBuilder().setCustomId("unlist").setLabel("Unlist").setStyle(ButtonStyle.Danger)
       );
 
-      // ✅ Antwort mit Embed & Komponenten
       await interaction.editReply({
         content: "",
         embeds: [embed],
