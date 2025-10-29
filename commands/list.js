@@ -8,32 +8,32 @@ const {
 } = require("discord.js");
 const fetch = require("node-fetch");
 
-// 🧠 Simpler Cache, damit Render nicht jede Sekunde API spammt
-const nameCache = new Map();
-
-// ✅ Diese Funktion nutzt eine Open-Source-Liste aller Minecraft-Namen (funktioniert IMMER)
+// 🧠 Autocomplete — echte Namenssuche über Mojang-API-Cache
 async function fetchNameSuggestions(query) {
   if (!query || query.length < 2) return [];
 
-  // Wenn Namen schon im Cache → gib sie zurück
-  if (nameCache.has(query)) return nameCache.get(query);
-
   try {
-    const res = await fetch(`https://api.ashcon.app/mojang/v2/user/${encodeURIComponent(query)}`);
-    if (!res.ok) return [];
+    // API von PlayerDB (funktioniert auf Render, braucht exakten Header)
+    const res = await fetch(`https://playerdb.co/api/search/minecraft/${encodeURIComponent(query)}`, {
+      method: "GET",
+      headers: {
+        "Accept": "application/json",
+        "User-Agent": "MineTradeBot/1.0 (Render Autocomplete Fix)"
+      }
+    });
 
     const data = await res.json();
-    if (data.username) {
-      const suggestions = [
-        { name: data.username, value: data.username },
-        { name: data.username.toLowerCase(), value: data.username.toLowerCase() },
-      ];
 
-      nameCache.set(query, suggestions);
-      return suggestions;
+    if (!data.success || !data.data?.players?.length) {
+      return [];
     }
 
-    return [];
+    // Nur erste 25 Spieler anzeigen (Discord Limit)
+    return data.data.players.slice(0, 25).map((p) => ({
+      name: p.username,
+      value: p.username,
+    }));
+
   } catch (err) {
     console.error("[Autocomplete Error]", err);
     return [];
@@ -58,11 +58,10 @@ module.exports = {
       opt.setName("listed_by").setDescription("User who listed the account")
     ),
 
-  // ✅ Autocomplete Event
+  // ✅ Autocomplete Handler
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused();
     const choices = await fetchNameSuggestions(focused);
-
     if (choices.length === 0) {
       await interaction.respond([{ name: "No Minecraft players found", value: focused }]);
     } else {
@@ -70,7 +69,7 @@ module.exports = {
     }
   },
 
-  // ✅ Command-Ausführung
+  // ✅ Command Execution
   async execute(interaction) {
     const mcName = interaction.options.getString("minecraft_name");
     const price = interaction.options.getInteger("amount");
@@ -79,7 +78,6 @@ module.exports = {
     await interaction.deferReply({ ephemeral: false });
 
     try {
-      // 🎨 Embed erstellen
       const embed = new EmbedBuilder()
         .setColor("#2ECC71")
         .setTitle(`💎 Account Listing: ${mcName}`)
@@ -101,7 +99,6 @@ module.exports = {
         )
         .setFooter({ text: "Made by WymppMashkal" });
 
-      // 🎛️ Dropdown-Menü mit allen Stats
       const selectMenu = new StringSelectMenuBuilder()
         .setCustomId("stat_menu")
         .setPlaceholder("Click a stat to view it!")
@@ -120,7 +117,6 @@ module.exports = {
 
       const rowSelect = new ActionRowBuilder().addComponents(selectMenu);
 
-      // 🎛️ Buttons
       const buttons1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("toggle_ping").setLabel("Toggle Ping").setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId("listing_owner").setLabel("Listing Owner").setStyle(ButtonStyle.Primary),
@@ -134,6 +130,7 @@ module.exports = {
       );
 
       await interaction.editReply({
+        content: "",
         embeds: [embed],
         components: [rowSelect, buttons1, buttons2],
       });
