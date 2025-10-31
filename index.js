@@ -1,5 +1,5 @@
 // ==========================================================
-// MineTradeBot - Full Version with Reaction Role Dashboard + Command Handler
+// V0 - Full Version with Reaction Role Dashboard + Command Handler
 // ==========================================================
 
 require("dotenv").config();
@@ -43,7 +43,7 @@ const CATEGORY_ID = process.env.CATEGORY_ID;
 const WELCOME_CHANNEL_ID = process.env.WELCOME_CHANNEL_ID;
 const RESTOCK_ROLE_ID = process.env.RESTOCK_ROLE_ID;
 const DASHBOARD_PORT = process.env.PORT || 3000;
-const SERVER_NAME = "MineTrade";
+const SERVER_NAME = "V0 Carries";
 const OWNER_ROLE_NAME = "👑 Owner";
 
 // === EXPRESS DASHBOARD ===
@@ -54,7 +54,7 @@ app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 app.use(
   session({
-    secret: "minetrade_secret_key",
+    secret: "V0_secret_key",
     resave: false,
     saveUninitialized: false,
     cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 },
@@ -142,7 +142,7 @@ app.post("/send", isAuthenticated, async (req, res) => {
       .setTitle(title || "Untitled Embed")
       .setDescription(description || "")
       .setColor(parseInt((color || "#FFD700").replace("#", ""), 16))
-      .setFooter({ text: footer || "MineTrade | Embed System", iconURL: FOOTER_ICON });
+      .setFooter({ text: footer || "V0 | Embed System", iconURL: FOOTER_ICON });
     if (restock === "on" && RESTOCK_ROLE_ID)
       await channel.send({ content: `<@&${RESTOCK_ROLE_ID}> 🔔 **Restock Alert!**` });
     await channel.send({ embeds: [embed] });
@@ -178,7 +178,7 @@ app.post("/reactionrole", isAuthenticated, async (req, res) => {
       .setTitle(title || "Reaction Roles")
       .setDescription(description || "React below to get roles!")
       .setColor(parseInt((color || "#FFD700").replace("#", ""), 16))
-      .setFooter({ text: footer || "MineTrade | Reaction Roles", iconURL: FOOTER_ICON });
+      .setFooter({ text: footer || "V0 | Reaction Roles", iconURL: FOOTER_ICON });
     const msg = await channel.send({ embeds: [embed] });
     for (const p of pairs) await msg.react(p.emoji);
 
@@ -205,7 +205,7 @@ app.post("/reactionrole/update", isAuthenticated, async (req, res) => {
     .setTitle(title || "Reaction Roles")
     .setDescription(description || "")
     .setColor(parseInt((color || "#FFD700").replace("#", ""), 16))
-    .setFooter({ text: footer || "MineTrade | Reaction Roles", iconURL: FOOTER_ICON });
+    .setFooter({ text: footer || "V0 | Reaction Roles", iconURL: FOOTER_ICON });
   await msg.edit({ embeds: [embed] });
 
   const pairs = Object.keys(req.body)
@@ -323,11 +323,11 @@ client.on("interactionCreate", async (interaction) => {
   });
   const ticketEmbed = new EmbedBuilder()
     .setColor("#FFD700")
-    .setTitle("🎟️ MineTrade Support Ticket")
+    .setTitle("🎟️ V0 Support Ticket")
     .setDescription(
       `Hello ${user}, 👋\n\nPlease describe your issue below. A support member will assist you shortly.\n\nClick **🔒 Close Ticket** when you're done.`
     )
-    .setFooter({ text: "MineTrade | Support", iconURL: FOOTER_ICON });
+    .setFooter({ text: "V0 | Support", iconURL: FOOTER_ICON });
   const closeButton = new ButtonBuilder().setCustomId("close_ticket").setLabel("🔒 Close Ticket").setStyle(ButtonStyle.Secondary);
   const closeRow = new ActionRowBuilder().addComponents(closeButton);
   await ticketChannel.send({ embeds: [ticketEmbed], components: [closeRow] });
@@ -370,7 +370,7 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.reply({ content: "✅ You are already verified!", ephemeral: true });
   } else {
     await member.roles.add(verifiedRole);
-    await interaction.reply({ content: "💎 You have been verified successfully! Welcome to MineTrade.", ephemeral: true });
+    await interaction.reply({ content: "💎 You have been verified successfully! Welcome to V0.", ephemeral: true });
   }
 });
 
@@ -385,11 +385,11 @@ client.on("guildMemberAdd", async (member) => {
     const rulesMention = rulesChannel ? `<#${rulesChannel.id}>` : "#rules";
     const embed = new EmbedBuilder()
       .setColor("#FFD700")
-      .setTitle("👋 Welcome to MineTrade!")
+      .setTitle("👋 Welcome to V0!")
       .setDescription(
-        `Hey ${member}, welcome to **MineTrade**!\n\nWe're glad to have you here. Please make sure to:\n✅ Verify yourself in ${verifyMention}\n📜 Read the rules in ${rulesMention}\n\nWe hope you enjoy our service 💎`
+        `Hey ${member}, welcome to **V0**!\n\nWe're glad to have you here. Please make sure to:\n✅ Verify yourself in ${verifyMention}\n📜 Read the rules in ${rulesMention}\n\nWe hope you enjoy our service 💎`
       )
-      .setFooter({ text: "MineTrade | Welcome System", iconURL: FOOTER_ICON });
+      .setFooter({ text: "V0 | Welcome System", iconURL: FOOTER_ICON });
     await channel.send({ embeds: [embed] });
   } catch (err) {
     console.error("❌ Error sending welcome message:", err);
