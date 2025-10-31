@@ -70,7 +70,7 @@ passport.use(
     {
       clientID: CLIENT_ID,
       clientSecret: CLIENT_SECRET,
-      callbackURL: "https://minetradebot.onrender.com/callback",
+      callbackURL: "https://V0.onrender.com/callback",
       scope: ["identify", "guilds", "guilds.members.read"],
     },
     (accessToken, refreshToken, profile, done) => done(null, profile)
