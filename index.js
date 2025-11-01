@@ -70,7 +70,7 @@ passport.use(
     {
       clientID: CLIENT_ID,
       clientSecret: CLIENT_SECRET,
-      callbackURL: "https://v0.onrender.com/callback",
+      callbackURL: "https://v0-plp3.onrender.com/callback",
       scope: ["identify", "guilds", "guilds.members.read"],
     },
     (accessToken, refreshToken, profile, done) => done(null, profile)
