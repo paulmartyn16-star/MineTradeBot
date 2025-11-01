@@ -159,7 +159,6 @@
 
     #reaction-pairs { margin-top: 10px; }
 
-    /* Reaction Role List */
     .reaction-list { margin-top: 20px; background:#1a1a1a; border-radius:10px; padding:15px; }
     .reaction-item { border-bottom:1px solid #333; padding:10px 0; }
     .reaction-item:last-child{ border-bottom:none; }
@@ -176,7 +175,6 @@
     <button id="tab-embed" class="active">📋 Embed Builder</button>
     <button id="tab-reaction">🎭 Reaction Roles</button>
 
-    <!-- Dynamische Channel-Liste (anklickbar) -->
     <div class="channel-list">
       <% 
       const channelNames = [];
@@ -201,6 +199,22 @@
         <div class="success"><%= message %></div>
       <% } %>
       <form action="/send" method="POST">
+        
+        <!-- === Live Preview Box === -->
+        <div id="embed-preview" style="
+          background-color: #1a1a1a;
+          border-radius: 10px;
+          padding: 15px;
+          margin-bottom: 20px;
+          border: 1px solid #333;
+          color: #fff;
+          box-shadow: 0 0 10px #000;
+        ">
+          <h2 id="preview-title" style="color:#ffd700;">Embed Title</h2>
+          <p id="preview-description" style="white-space:pre-line;">Embed Description...</p>
+          <p id="preview-footer" style="color:#888; border-top:1px solid #333; padding-top:5px; font-size:12px;">Footer Text</p>
+        </div>
+
         <select name="channelId" required>
           <option value="">Select Channel</option>
           <% channels.forEach(ch => { %>
@@ -247,7 +261,6 @@
       </form>
     </div>
 
-    <!-- Channel-specific Reaction Role Editors -->
     <% 
     const grouped = {};
     Object.entries(rrData).forEach(([msgId, data]) => {
@@ -356,6 +369,31 @@
       pairsDiv.appendChild(div);
       pairIndex++;
     });
+
+    // === Live Preview ===
+    const titleInput = document.getElementById('title');
+    const descInput = document.getElementById('description');
+    const footerInput = document.getElementById('footer');
+    const colorInput = document.getElementById('color');
+
+    const previewBox = document.getElementById('embed-preview');
+    const prevTitle = document.getElementById('preview-title');
+    const prevDesc = document.getElementById('preview-description');
+    const prevFooter = document.getElementById('preview-footer');
+
+    function updatePreview() {
+      prevTitle.textContent = titleInput.value || 'Embed Title';
+      prevDesc.textContent = descInput.value || 'Embed Description...';
+      prevFooter.textContent = footerInput.value || 'Footer Text';
+      previewBox.style.borderColor = colorInput.value || '#ffd700';
+      prevTitle.style.color = colorInput.value || '#ffd700';
+    }
+
+    [titleInput, descInput, footerInput, colorInput].forEach(input => {
+      input.addEventListener('input', updatePreview);
+    });
+
+    updatePreview();
   </script>
 </body>
 </html>
