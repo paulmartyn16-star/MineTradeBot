@@ -410,7 +410,7 @@ client.on("interactionCreate", async (interaction) => {
   const id = interaction.customId;
   if (!id.startsWith("open_ticket_")) return;
 
-  const [_, slayerName, tier] = id.split("_");
+  const [_, __, slayerName, tier] = id.split("_");
   const guild = interaction.guild;
   const user = interaction.user;
 
