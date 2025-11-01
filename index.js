@@ -1,5 +1,5 @@
 // ==========================================================
-// V0 - Full Version with Reaction Role Dashboard + Command Handler
+// V0 - Full Version with Reaction Role Dashboard + Command Handler + SetupRoles
 // ==========================================================
 
 require("dotenv").config();
@@ -195,6 +195,7 @@ app.post("/reactionrole", isAuthenticated, async (req, res) => {
   }
 });
 
+// === Reaction Role Editing / Deleting ===
 app.post("/reactionrole/update", isAuthenticated, async (req, res) => {
   const { messageId, title, description, color, footer } = req.body;
   if (!rr[messageId]) return res.send("❌ Unknown message ID.");
@@ -272,17 +273,15 @@ client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// === SLASH COMMAND EXECUTION ===
+// === SLASH COMMAND EXECUTION (supports /setuproles etc.) ===
 client.on("interactionCreate", async (interaction) => {
   try {
-    // ✅ Autocomplete Event
     if (interaction.isAutocomplete()) {
       const command = client.commands.get(interaction.commandName);
       if (command?.autocomplete) await command.autocomplete(interaction);
       return;
     }
 
-    // ✅ Slash Commands
     if (!interaction.isChatInputCommand()) return;
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
@@ -297,8 +296,6 @@ client.on("interactionCreate", async (interaction) => {
     }
   }
 });
-
-
 
 // === Support Ticket System ===
 client.on("interactionCreate", async (interaction) => {
@@ -324,9 +321,7 @@ client.on("interactionCreate", async (interaction) => {
   const ticketEmbed = new EmbedBuilder()
     .setColor("#FFD700")
     .setTitle("🎟️ V0 Support Ticket")
-    .setDescription(
-      `Hello ${user}, 👋\n\nPlease describe your issue below. A support member will assist you shortly.\n\nClick **🔒 Close Ticket** when you're done.`
-    )
+    .setDescription(`Hello ${user}, 👋\n\nPlease describe your issue below. A support member will assist you shortly.\n\nClick **🔒 Close Ticket** when you're done.`)
     .setFooter({ text: "V0 | Support", iconURL: FOOTER_ICON });
   const closeButton = new ButtonBuilder().setCustomId("close_ticket").setLabel("🔒 Close Ticket").setStyle(ButtonStyle.Secondary);
   const closeRow = new ActionRowBuilder().addComponents(closeButton);
@@ -386,9 +381,7 @@ client.on("guildMemberAdd", async (member) => {
     const embed = new EmbedBuilder()
       .setColor("#FFD700")
       .setTitle("👋 Welcome to V0!")
-      .setDescription(
-        `Hey ${member}, welcome to **V0**!\n\nWe're glad to have you here. Please make sure to:\n✅ Verify yourself in ${verifyMention}\n📜 Read the rules in ${rulesMention}\n\nWe hope you enjoy our service 💎`
-      )
+      .setDescription(`Hey ${member}, welcome to **V0**!\n\nWe're glad to have you here. Please make sure to:\n✅ Verify yourself in ${verifyMention}\n📜 Read the rules in ${rulesMention}\n\nWe hope you enjoy our service 💎`)
       .setFooter({ text: "V0 | Welcome System", iconURL: FOOTER_ICON });
     await channel.send({ embeds: [embed] });
   } catch (err) {

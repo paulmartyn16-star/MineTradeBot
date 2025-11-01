@@ -1,22 +1,31 @@
-const { REST, Routes } = require("discord.js");
-require("dotenv").config();
-const fs = require("fs");
+const { REST, Routes } = require('discord.js');
+const fs = require('fs');
+require('dotenv').config();
 
 const commands = [];
-const commandFiles = fs.readdirSync("./commands").filter(file => file.endsWith(".js"));
+const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
 
 for (const file of commandFiles) {
   const command = require(`./commands/${file}`);
-  commands.push(command.data.toJSON());
+  if ('data' in command && 'execute' in command) {
+    commands.push(command.data.toJSON());
+  } else {
+    console.log(`[WARNING] The command at ${file} is missing "data" or "execute".`);
+  }
 }
 
-const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
+const rest = new REST().setToken(process.env.TOKEN);
 
 (async () => {
   try {
-    console.log("Started refreshing slash commands...");
-    await rest.put(Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID), { body: commands });
-    console.log("✅ Slash commands updated!");
+    console.log(`Deploying ${commands.length} slash commands...`);
+
+    await rest.put(
+      Routes.applicationCommands(process.env.CLIENT_ID),
+      { body: commands },
+    );
+
+    console.log('✅ Successfully registered all application commands.');
   } catch (error) {
     console.error(error);
   }
