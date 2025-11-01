@@ -391,3 +391,240 @@ client.on("guildMemberAdd", async (member) => {
 
 // === LOGIN ===
 client.login(TOKEN);
+// =====================================================
+// 🧩 V0 Slayer Ticket System (Panels, Claim, Sortierung)
+// =====================================================
+
+const ticketCategories = {
+  revenant: "Revenant Slayer",
+  tarantula: "Tarantula Slayer",
+  sven: "Sven Slayer",
+  enderman: "Enderman Slayer",
+  blaze: "Blaze Slayer",
+  vampire: "Vampire Slayer",
+};
+
+// === Ticket erstellen ===
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isButton()) return;
+  const id = interaction.customId;
+  if (!id.startsWith("open_ticket_")) return;
+
+  const [_, slayerName, tier] = id.split("_");
+  const guild = interaction.guild;
+  const user = interaction.user;
+
+  const categoryName = ticketCategories[slayerName];
+  const category = guild.channels.cache.find(
+    (c) => c.name === categoryName && c.type === 4
+  );
+
+  if (!category) {
+    await interaction.reply({
+      content: `❌ Category "${categoryName}" not found!`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  // Prüfen ob User schon ein Ticket für diesen Slayer hat
+  const existing = guild.channels.cache.find(
+    (c) =>
+      c.parentId === category.id &&
+      c.name.includes(`${slayerName}-t`) &&
+      c.name.includes(user.username.toLowerCase())
+  );
+  if (existing) {
+    await interaction.reply({
+      content: `❌ You already have an open ${slayerName} ticket: ${existing}`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  // === Sichtbare Rollen ermitteln (gleicher Slayer, Tier >= aktuellem Tier) ===
+  const allRoles = guild.roles.cache.filter((r) =>
+    r.name.toLowerCase().includes(slayerName)
+  );
+  const visibleRoles = allRoles.filter((r) => {
+    const match = r.name.match(/tier\s*(\d+)/i);
+    if (!match) return false;
+    const tierNum = parseInt(match[1]);
+    return tierNum >= parseInt(tier); // höhere Tiers dürfen niedrigere sehen
+  });
+
+  // === Ticket erstellen ===
+  const ticketChannel = await guild.channels.create({
+    name: `${slayerName}-t${tier}-${user.username}`,
+    type: 0,
+    parent: category,
+    topic: `${slayerName} Tier ${tier} Carry for ${user.tag}`,
+    permissionOverwrites: [
+      { id: guild.id, deny: ["ViewChannel"] },
+      { id: user.id, allow: ["ViewChannel", "SendMessages", "AttachFiles"] },
+      ...visibleRoles.map((r) => ({
+        id: r.id,
+        allow: ["ViewChannel", "SendMessages", "AttachFiles"],
+      })),
+    ],
+  });
+
+  // === Ticket Nachricht ===
+  const spoilerText = `|| @Tier ${tier} ${capitalize(slayerName)} ||\n|| <@${user.id}> ||`;
+  const embed = new EmbedBuilder()
+    .setColor("#FFD700")
+    .setTitle(`${capitalize(slayerName)} Tier ${tier} Ticket`)
+    .setDescription("Please wait for a carrier to claim your ticket.")
+    .setFooter({ text: `V0 | ${capitalize(slayerName)} Slayer` });
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`claim_${ticketChannel.id}`)
+      .setLabel("✅ Claim")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`unclaim_${ticketChannel.id}`)
+      .setLabel("🔄 Unclaim")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`close_${ticketChannel.id}`)
+      .setLabel("🔒 Close")
+      .setStyle(ButtonStyle.Danger)
+  );
+
+  await ticketChannel.send({
+    content: spoilerText,
+    embeds: [embed],
+    components: [row],
+  });
+
+  await interaction.reply({
+    content: `✅ Your ${capitalize(slayerName)} Tier ${tier} ticket has been created: ${ticketChannel}`,
+    ephemeral: true,
+  });
+
+  // Nach Erstellung sortieren
+  sortTickets(category);
+});
+
+// === Claim, Unclaim, Close Buttons ===
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isButton()) return;
+  const id = interaction.customId;
+  const guild = interaction.guild;
+
+  // === CLAIM ===
+  if (id.startsWith("claim_")) {
+    const channelId = id.split("_")[1];
+    const channel = guild.channels.cache.get(channelId);
+    if (!channel) return;
+
+    const [slayerName, tier] = channel.name.split("-t");
+    const match = tier?.match(/\d/);
+    if (!match) return;
+    const ticketTier = parseInt(match[0]);
+
+    // Sichtbare Rollen wiederholen
+    const roles = guild.roles.cache.filter((r) =>
+      r.name.toLowerCase().includes(slayerName)
+    );
+    const allowed = roles.filter((r) => {
+      const match = r.name.match(/tier\s*(\d+)/i);
+      if (!match) return false;
+      const tierNum = parseInt(match[1]);
+      return tierNum >= ticketTier;
+    });
+
+    const member = await guild.members.fetch(interaction.user.id);
+    const hasPermission = member.roles.cache.some((r) =>
+      allowed.has(r.id)
+    );
+
+    if (!hasPermission) {
+      await interaction.reply({
+        content: "❌ You don't have permission to claim this ticket.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.reply({
+      content: `✅ Ticket claimed by <@${interaction.user.id}>.`,
+    });
+
+    // Schreibrechte anpassen
+    const overwrites = channel.permissionOverwrites.cache;
+    overwrites.forEach(async (po) => {
+      if (po.allow.has("SendMessages") && po.id !== interaction.user.id) {
+        await channel.permissionOverwrites.edit(po.id, { SendMessages: false });
+      }
+    });
+    await channel.permissionOverwrites.edit(interaction.user.id, {
+      SendMessages: true,
+    });
+  }
+
+  // === UNCLAIM ===
+  if (id.startsWith("unclaim_")) {
+    const channelId = id.split("_")[1];
+    const channel = guild.channels.cache.get(channelId);
+    if (!channel) return;
+    await interaction.reply({
+      content: `🔄 Ticket unclaimed by <@${interaction.user.id}>.`,
+    });
+
+    // Alle Carriers wieder freigeben
+    const [slayerName, tier] = channel.name.split("-t");
+    const match = tier?.match(/\d/);
+    if (!match) return;
+    const ticketTier = parseInt(match[0]);
+
+    const roles = guild.roles.cache.filter((r) =>
+      r.name.toLowerCase().includes(slayerName)
+    );
+    const allowed = roles.filter((r) => {
+      const match = r.name.match(/tier\s*(\d+)/i);
+      if (!match) return false;
+      const tierNum = parseInt(match[1]);
+      return tierNum >= ticketTier;
+    });
+
+    allowed.forEach(async (r) => {
+      await channel.permissionOverwrites.edit(r.id, { SendMessages: true });
+    });
+  }
+
+  // === CLOSE ===
+  if (id.startsWith("close_")) {
+    const channelId = id.split("_")[1];
+    const channel = guild.channels.cache.get(channelId);
+    if (!channel) return;
+    await interaction.reply({
+      content: "🔒 Closing ticket...",
+      ephemeral: true,
+    });
+    setTimeout(() => channel.delete().catch(() => {}), 2000);
+  }
+});
+
+// === Ticket Sortierung ===
+async function sortTickets(category) {
+  const channels = Array.from(category.children.cache.values()).filter(
+    (ch) => ch.name.includes("-t")
+  );
+
+  channels.sort((a, b) => {
+    const tierA = parseInt(a.name.match(/-t(\d)/)?.[1] || 0);
+    const tierB = parseInt(b.name.match(/-t(\d)/)?.[1] || 0);
+    return tierB - tierA; // höchste Tiers oben
+  });
+
+  for (let i = 0; i < channels.length; i++) {
+    await channels[i].setPosition(i);
+  }
+}
+
+function capitalize(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
